@@ -193,22 +193,35 @@
     });
 
     // SLOT-03: picking a start time on a specific-time slot auto-fills an
-    // empty end time with start+1h. The empty-only guard means a manually
-    // set (non-empty) end time is never overwritten, and once auto-filled
-    // once, a later start-time change won't clobber it either.
+    // empty end time with start+1h. When the end time is already populated
+    // (e.g. right after Copy clones both start and end), changing the start
+    // time instead shifts the end time to preserve the existing duration —
+    // computed against the *previous* start value, captured here at wire
+    // time so a Copy-cloned row's original duration is used correctly.
     var startInput = row.querySelector('[name="slot_start_time"]');
     var endInput = row.querySelector('[name="slot_end_time"]');
     if (startInput && endInput) {
+      var previousStartValue = startInput.value;
       startInput.addEventListener("change", function () {
-        if (endInput.value) {
-          return;
-        }
         var start = parseTimeValue(startInput.value);
         if (!start) {
+          previousStartValue = startInput.value;
           return;
         }
-        var total = ((start.h * 60 + start.m + 60) % 1440 + 1440) % 1440;
-        endInput.value = formatTimeValue(Math.floor(total / 60), total % 60);
+        if (!endInput.value) {
+          var total = ((start.h * 60 + start.m + 60) % 1440 + 1440) % 1440;
+          endInput.value = formatTimeValue(Math.floor(total / 60), total % 60);
+          previousStartValue = startInput.value;
+          return;
+        }
+        var previousStart = parseTimeValue(previousStartValue);
+        var end = parseTimeValue(endInput.value);
+        if (previousStart && end) {
+          var duration = (((end.h * 60 + end.m) - (previousStart.h * 60 + previousStart.m)) % 1440 + 1440) % 1440;
+          var newTotal = ((start.h * 60 + start.m + duration) % 1440 + 1440) % 1440;
+          endInput.value = formatTimeValue(Math.floor(newTotal / 60), newTotal % 60);
+        }
+        previousStartValue = startInput.value;
       });
 
       // Start-time +/-15 steppers also shift the end time by the same

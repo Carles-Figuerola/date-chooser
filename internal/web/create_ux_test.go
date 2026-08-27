@@ -96,6 +96,39 @@ func TestSlotUX_AutoFillEndTime(t *testing.T) {
 	}
 }
 
+// TestSlotUX_PreserveDurationOnStartEdit proves that when the end time is
+// already populated (e.g. right after Copy), changing the start time shifts
+// the end time by the previous duration instead of leaving it stale.
+func TestSlotUX_PreserveDurationOnStartEdit(t *testing.T) {
+	data, err := os.ReadFile("static/create.js")
+	if err != nil {
+		t.Fatalf("reading static/create.js: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "previousStartValue") {
+		t.Fatalf("expected create.js to track a previousStartValue for the start-time change handler, got no match")
+	}
+
+	startIdx := strings.Index(content, `startInput.addEventListener("change"`)
+	if startIdx == -1 {
+		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in create.js")
+	}
+	handlerRegion := content[startIdx:]
+	if len(handlerRegion) > 1600 {
+		handlerRegion = handlerRegion[:1600]
+	}
+
+	if !strings.Contains(handlerRegion, "parseTimeValue(previousStartValue)") {
+		t.Fatalf("expected the handler to parse the previous start value to compute the existing duration, got: %s", handlerRegion)
+	}
+	durationIdx := strings.Index(handlerRegion, "var duration")
+	assignIdx := strings.LastIndex(handlerRegion, "endInput.value =")
+	if durationIdx == -1 || assignIdx == -1 || durationIdx >= assignIdx {
+		t.Fatalf("expected a duration computed from the previous start/end before the final endInput.value assignment, got: %s", handlerRegion)
+	}
+}
+
 // TestSlotUX_CopyButton_Markup proves create.html carries a data-copy-slot
 // "Copy" button in the server-rendered row loop and in both row templates
 // (SLOT-04).

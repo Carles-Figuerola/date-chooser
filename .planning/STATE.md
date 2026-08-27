@@ -78,6 +78,12 @@ None yet.
 
 None.
 
+## Quick Tasks Completed
+
+| Slug | Date | Summary |
+|------|------|---------|
+| preserve-slot-duration-on-start-edit | 2026-08-27 | Start-time change now preserves an existing end-time duration (e.g. after Copy) instead of leaving the end time stale |
+
 ## Deferred Items
 
 Items acknowledged and carried forward from previous milestone close:
