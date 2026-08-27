@@ -630,8 +630,17 @@ textarea:focus {
   cursor: not-allowed;
 }
 
+.slot-row-fields {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1 1 100%;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
 .slot-row-marked {
-  background: var(--color-bg);
+  background: #FEF2F2;
+  border: 1px solid var(--color-destructive);
 }
 
 .slot-row-marked .slot-row-fields {
