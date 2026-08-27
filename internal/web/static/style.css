@@ -1,0 +1,395 @@
+/* Date Chooser — Phase 1 minimal styling.
+   Tokens from 01-UI-SPEC.md; full visual polish lands in Plans 02-03. */
+
+:root {
+  --color-bg: #F8FAFC;
+  --color-surface: #FFFFFF;
+  --color-accent: #2563EB;
+  --color-destructive: #DC2626;
+  --color-text: #1E293B;
+  --color-text-muted: #64748B;
+  --color-border: #E2E8F0;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-bg);
+}
+
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-2xl) var(--space-lg);
+}
+
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: var(--space-lg);
+}
+
+.display {
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 var(--space-2xl);
+}
+
+.heading {
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.2;
+  margin: 0 0 var(--space-md);
+}
+
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  margin-bottom: var(--space-sm);
+}
+
+.label.accent {
+  color: var(--color-accent);
+}
+
+.body {
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.field {
+  margin-bottom: var(--space-md);
+}
+
+.form-section {
+  margin-bottom: var(--space-xl);
+}
+
+.form-section:last-of-type {
+  margin-bottom: 0;
+}
+
+input[type="text"],
+input[type="date"],
+input[type="datetime-local"],
+textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-sm) 12px;
+  font-size: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-family: inherit;
+}
+
+textarea {
+  min-height: auto;
+}
+
+input:focus,
+textarea:focus {
+  outline: 2px solid var(--color-accent);
+}
+
+.btn-primary {
+  min-height: 44px;
+  padding: var(--space-sm) 24px;
+  margin-top: var(--space-xl);
+  background: var(--color-accent);
+  color: var(--color-surface);
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  min-height: 44px;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface);
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  margin-bottom: var(--space-sm);
+}
+
+.btn-remove {
+  min-height: 44px;
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  color: var(--color-destructive);
+  border: 1px solid var(--color-destructive);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.btn-remove[hidden] {
+  display: none;
+}
+
+.toggle-group {
+  display: flex;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+  padding: 0;
+  margin: 0 0 var(--space-md);
+}
+
+.toggle-group legend {
+  display: block;
+  width: 100%;
+  margin-bottom: var(--space-sm);
+}
+
+.toggle-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: 44px;
+  padding: var(--space-sm) 12px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toggle-option.toggle-active {
+  background: var(--color-accent);
+  color: var(--color-surface);
+}
+
+.toggle-option input[type="radio"] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+#slots-list {
+  margin-bottom: var(--space-sm);
+}
+
+.slot-row {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-sm);
+  padding: var(--space-sm);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.slot-row input {
+  flex: 1;
+  min-width: 140px;
+}
+
+.slot-row input.slot-date-full {
+  flex: 1 1 100%;
+}
+
+.slot-time-range {
+  display: flex;
+  align-items: center;
+  flex: 1 1 100%;
+  gap: var(--space-sm);
+}
+
+.slot-time-arrow {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.banner-error {
+  background: #FEF2F2;
+  border: 1px solid var(--color-destructive);
+  color: var(--color-destructive);
+  border-radius: 6px;
+  padding: var(--space-sm) 12px;
+  margin-bottom: var(--space-md);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.banner-error[hidden] {
+  display: none;
+}
+
+.field-error {
+  color: var(--color-destructive);
+  font-size: 14px;
+  margin: var(--space-xs) 0 0;
+}
+
+.hint {
+  color: var(--color-text-muted);
+  margin-top: var(--space-sm);
+}
+
+.hint[hidden] {
+  display: none;
+}
+
+.link-box {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  max-width: 100%;
+  overflow-wrap: break-word;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: var(--space-sm) 12px;
+  margin: 0;
+}
+
+.link-box-secret {
+  background: #EFF6FF;
+  border-color: var(--color-accent);
+}
+
+.link-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  word-break: break-all;
+  overflow-wrap: break-word;
+  color: var(--color-accent);
+}
+
+.btn-copy {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-accent);
+  color: var(--color-surface);
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.label-secret {
+  color: var(--color-accent);
+}
+
+.copy-fallback {
+  color: var(--color-text-muted);
+  font-size: 14px;
+  margin: var(--space-md) 0 0;
+}
+
+.copy-fallback[hidden] {
+  display: none;
+}
+
+.time-field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 220px;
+  gap: var(--space-xs);
+}
+
+.time-field input[type="time"] {
+  flex: 1;
+  min-width: 90px;
+}
+
+.btn-time-step,
+.btn-time-dropdown-toggle {
+  flex: 0 0 auto;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0 var(--space-sm);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.btn-time-step:hover,
+.btn-time-dropdown-toggle:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.time-dropdown {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + var(--space-xs));
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-xs) 0;
+  list-style: none;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+  min-width: 100px;
+}
+
+.time-dropdown[hidden] {
+  display: none;
+}
+
+.time-dropdown-option {
+  display: block;
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  border: none;
+  background: none;
+  text-align: left;
+  font-size: 14px;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.time-dropdown-option:hover,
+.time-dropdown-option:focus {
+  background: var(--color-bg);
+  color: var(--color-accent);
+}
+
+.time-dropdown-option[aria-selected="true"] {
+  font-weight: 600;
+  color: var(--color-accent);
+}

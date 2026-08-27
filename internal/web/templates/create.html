@@ -1,0 +1,114 @@
+{{define "content"}}
+<div class="card">
+  <h1 class="display">Create a poll</h1>
+
+  <div id="form-banner" class="banner-error"{{if not .BannerError}} hidden{{end}}>{{.BannerError}}</div>
+
+  <form method="post" action="/polls" class="form" id="create-poll-form">
+    <div class="form-section">
+      <div class="field">
+        <label for="title" class="label">Poll title</label>
+        <input type="text" id="title" name="title" maxlength="200" required placeholder="Team sync" value="{{.Title}}">
+        {{if .TitleError}}<p class="field-error">{{.TitleError}}</p>{{end}}
+      </div>
+
+      <div class="field">
+        <label for="description" class="label">Description (optional)</label>
+        <textarea id="description" name="description" maxlength="2000" rows="3">{{.Description}}</textarea>
+      </div>
+
+      <div class="field">
+        <label for="organizer_name" class="label">Your name (optional)</label>
+        <input type="text" id="organizer_name" name="organizer_name" maxlength="100" value="{{.OrganizerName}}">
+      </div>
+
+      <fieldset class="field toggle-group" id="poll-type-toggle">
+        <legend class="label">Slot type</legend>
+        <label class="toggle-option{{if eq .PollType "all_day"}} toggle-active{{end}}">
+          <input type="radio" name="poll_type" value="all_day"{{if eq .PollType "all_day"}} checked{{end}}>
+          <span>All-day</span>
+        </label>
+        <label class="toggle-option{{if eq .PollType "date_time"}} toggle-active{{end}}">
+          <input type="radio" name="poll_type" value="date_time"{{if eq .PollType "date_time"}} checked{{end}}>
+          <span>Specific time</span>
+        </label>
+      </fieldset>
+    </div>
+
+    <div class="form-section">
+      <h2 class="heading">Add slots</h2>
+      <label class="label">Slots</label>
+
+      <div id="slots-list" data-mode="{{.PollType}}">
+        {{range $slot := .Slots}}
+        <div class="slot-row" data-slot-row>
+          {{if eq $.PollType "date_time"}}
+          <input type="date" name="slot_date" value="{{$slot.Date}}" class="slot-date-full" aria-label="Slot date">
+          <div class="slot-time-range">
+            <div class="time-field" data-time-field>
+              <input type="time" name="slot_start_time" value="{{$slot.StartTime}}" step="900" aria-label="Start time" data-time-input>
+              <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
+              <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+              <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+              <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+            </div>
+            <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+            <div class="time-field" data-time-field>
+              <input type="time" name="slot_end_time" value="{{$slot.EndTime}}" step="900" aria-label="End time" data-time-input>
+              <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
+              <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+              <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+              <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+            </div>
+          </div>
+          {{else}}
+          <input type="date" name="slot_date" value="{{$slot.Date}}" aria-label="Slot date">
+          {{end}}
+          <button type="button" class="btn-remove" data-remove-slot{{if eq (len $.Slots) 1}} hidden disabled{{end}}>Remove slot</button>
+          {{if $slot.Error}}<p class="field-error">{{$slot.Error}}</p>{{end}}
+        </div>
+        {{end}}
+      </div>
+
+      <button type="button" class="btn-secondary" id="add-slot-btn">Add another slot</button>
+      <p class="label" id="slot-counter">{{if eq (len .Slots) 1}}1 slot added{{else}}{{len .Slots}} slots added{{end}}</p>
+      <p class="body hint" id="slot-hint" hidden>50+ slots can be hard for participants to scan — consider trimming the list.</p>
+    </div>
+
+    <button type="submit" class="btn-primary" id="submit-btn">Create poll</button>
+  </form>
+</div>
+
+<template id="slot-row-template-all_day">
+  <div class="slot-row" data-slot-row>
+    <input type="date" name="slot_date" aria-label="Slot date">
+    <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
+  </div>
+</template>
+
+<template id="slot-row-template-date_time">
+  <div class="slot-row" data-slot-row>
+    <input type="date" name="slot_date" class="slot-date-full" aria-label="Slot date">
+    <div class="slot-time-range">
+      <div class="time-field" data-time-field>
+        <input type="time" name="slot_start_time" step="900" aria-label="Start time" data-time-input>
+        <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
+        <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+        <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+        <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+      </div>
+      <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+      <div class="time-field" data-time-field>
+        <input type="time" name="slot_end_time" step="900" aria-label="End time" data-time-input>
+        <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
+        <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+        <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+        <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+      </div>
+    </div>
+    <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
+  </div>
+</template>
+
+<script src="/static/create.js" defer></script>
+{{end}}

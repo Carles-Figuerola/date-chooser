@@ -12,18 +12,17 @@ An organizer can create a poll of date/time options and get back, without any si
 
 ### Validated
 
-(None yet — ship to validate)
+- ✓ Organizer can create a poll with a name/description and a set of candidate date/time slots — Phase 1
+- ✓ Organizer receives a shareable participant link and a separate secret admin link — Phase 1
+- ✓ App runs from a single Docker image, storing all data in a SQLite file on a mounted volume — Phase 1
 
 ### Active
 
-- [ ] Organizer can create a poll with a name/description and a set of candidate date/time slots
-- [ ] Organizer receives a shareable participant link and a separate secret admin link
 - [ ] Participant can open the poll link (no login) and respond Yes/No/Maybe per slot, with an optional short comment
 - [ ] Poll page shows a results grid (slots x participants) with per-slot Yes/No/Maybe tallies
 - [ ] Admin can view all responses and see which slot(s) have the best overall availability
 - [ ] Admin can edit or delete the poll
-- [ ] Works well on both desktop and mobile browsers
-- [ ] App runs from a single Docker image, storing all data in a SQLite file on a mounted volume
+- [ ] Works well on both desktop and mobile browsers (partially validated in Phase 1's poll-creation flow; still open for voting/results/admin UI in later phases)
 
 ### Out of Scope
 
@@ -52,10 +51,12 @@ An organizer can create a poll of date/time options and get back, without any si
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Go over Python for backend | User offered either; Go gives a single static binary, trivial minimal-footprint Docker image, and simple SQLite driver story (no separate runtime/venv to containerize) — best fit for the "single container + volume" deployment goal | — Pending |
-| No accounts, link-based access (participant + admin tokens) | Explicitly requested; matches reference tools' common "shareable link" pattern for small/ad-hoc groups | — Pending |
-| SQLite for storage | Explicitly requested; sufficient for expected scale (small groups, low write volume) | — Pending |
-| Server-rendered web UI (not a SPA) over a Go backend | Simplest way to get a fast, mobile-friendly UI with minimal JS, fits a single-binary Go app well | — Pending |
+| Go over Python for backend | User offered either; Go gives a single static binary, trivial minimal-footprint Docker image, and simple SQLite driver story (no separate runtime/venv to containerize) — best fit for the "single container + volume" deployment goal | ✓ Good — Phase 1 shipped a working multi-stage distroless image |
+| No accounts, link-based access (participant + admin tokens) | Explicitly requested; matches reference tools' common "shareable link" pattern for small/ad-hoc groups | ✓ Good — Phase 1: independent crypto/rand tokens, admin token not derivable from participant token |
+| SQLite for storage | Explicitly requested; sufficient for expected scale (small groups, low write volume) | ✓ Good — `modernc.org/sqlite` (pure Go, no CGO), embedded idempotent schema |
+| Server-rendered web UI (not a SPA) over a Go backend | Simplest way to get a fast, mobile-friendly UI with minimal JS, fits a single-binary Go app well | ✓ Good — Phase 1: `html/template` + a small progressive-enhancement JS file per page |
+| Go 1.25 (not 1.23 as originally planned) | `modernc.org/sqlite`'s transitive deps required go ≥1.25 to compile — discovered during Phase 1 execution | ✓ Good — no other impact |
+| Date+time slot inputs: separate `<input type=date>` + two `<input type=time step=900>` (not `datetime-local` x2) | User found the original `datetime-local` x2 UX confusing (calendar icon only picks date, no visible time picker) during manual testing; CONTEXT.md already established start/end share one date, so this only needed a rendering split, not a data-model change | ✓ Good — Phase 1, plus a custom hour-dropdown + ±15min stepper layered on top per follow-up user feedback |
 
 ## Evolution
 
@@ -75,4 +76,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-24 after initialization*
+*Last updated: 2026-08-25 after Phase 1*

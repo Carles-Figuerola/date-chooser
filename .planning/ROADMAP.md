@@ -29,7 +29,10 @@ Decimal phases appear between their surrounding integers in numeric order.
   2. Immediately after creation, the organizer sees a shareable participant link and a separate admin link that is clearly marked as secret
   3. The application starts and serves HTTP traffic from a single Docker image, with listen port and SQLite file path configurable via environment variables
   4. A poll created before a container restart is still present after restarting the container against the same mounted volume, and the app also starts cleanly against a fresh empty volume
-**Plans**: TBD
+**Plans:** 3 plans
+- [ ] 01-01-PLAN.md — Walking Skeleton: end-to-end poll-creation tracer (Go + net/http + modernc.org/sqlite + crypto/rand tokens) packaged as a single Docker image with persistent /data volume
+- [ ] 01-02-PLAN.md — Full poll-creation form (title/description/organizer, all-day vs date+time toggle, add/remove slot rows) with server-side validation and multi-slot persistence
+- [ ] 01-03-PLAN.md — Links-display page showing participant + secret admin links with copy-to-clipboard
 **UI hint**: yes
 
 ### Phase 2: Voting End-to-End
@@ -79,7 +82,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Poll Creation & Dockerized Foundation | 0/TBD | Not started | - |
+| 1. Poll Creation & Dockerized Foundation | 0/3 | Not started | - |
 | 2. Voting End-to-End | 0/TBD | Not started | - |
 | 3. Results Grid | 0/TBD | Not started | - |
 | 4. Admin Poll Management | 0/TBD | Not started | - |
