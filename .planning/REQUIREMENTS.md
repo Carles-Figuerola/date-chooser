@@ -14,8 +14,8 @@
 ### Instance Admin Page
 
 - [ ] **ADMIN-01**: A new `settings` table stores a single instance-admin secret (crypto/rand token), auto-generated on first server startup if not already present
-- [ ] **ADMIN-02**: A `/admin/login` page accepts the secret via a form; on success it sets a session-only cookie (no `Max-Age`/`Expires` — cleared when the browser session ends) authorizing access to `/admin`
-- [ ] **ADMIN-03**: `/admin` (unreachable without a valid session cookie) lists every poll: title, created date, participant link, admin link — read-only, no delete/edit actions from this page
+- [ ] **ADMIN-02**: A `/admin/login` page accepts the secret via a form; on success it creates a fresh session (a new random token, stored with a timestamp, distinct from the secret) valid for 24 hours from creation, and sets a cookie naming it (no `Max-Age`/`Expires` on the cookie itself — the 24h expiry is enforced server-side against the session's timestamp, not by the cookie expiring). Sessions older than 24h are deleted the next time anyone hits `/admin` or `/admin/login` (lazy cleanup, not the security boundary — that's the timestamp check itself)
+- [ ] **ADMIN-03**: `/admin` (unreachable without a valid, non-expired session) lists every poll: title, created date, participant link, admin link — read-only, no delete/edit actions from this page
 - [ ] **ADMIN-04**: README documents the exact `sqlite3` command to retrieve the secret directly from the database file
 - [ ] **ADMIN-05**: The `/admin/login` page itself shows the same `sqlite3` retrieval command (in a collapsed `<details>` disclosure, not always-visible) — the command/DB path aren't secret, only the value it returns is, so showing it there isn't a leak, and it saves a trip to the README for someone who's forgotten it
 

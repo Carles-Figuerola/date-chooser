@@ -37,7 +37,7 @@ Two independent features: (1) export/import a poll's slots as a plain-text file 
 **Success Criteria** (what must be TRUE):
 
   1. On a fresh database, the instance-admin secret is auto-generated on first server startup and persisted in a `settings` table
-  2. `/admin` is unreachable without first submitting the correct secret at `/admin/login`; a valid submission sets a session-only cookie
+  2. `/admin` is unreachable without first submitting the correct secret at `/admin/login`; a valid submission creates a 24h session and sets a cookie naming it — sessions past 24h are rejected at auth time and lazily pruned from the database on the next `/admin`/`/admin/login` request
   3. Once logged in, `/admin` lists every poll's title, created date, participant link, and admin link
   4. The README documents the exact `sqlite3` command to read the secret out of the database file
   5. The `/admin/login` page itself has a collapsed `<details>` disclosure showing that same `sqlite3` command, so it's discoverable without leaving the page
