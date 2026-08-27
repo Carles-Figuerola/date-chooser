@@ -43,27 +43,28 @@
         {{range $slot := .Slots}}
         <div class="slot-row" data-slot-row>
           {{if eq $.PollType "date_time"}}
-          <input type="date" name="slot_date" value="{{$slot.Date}}" class="slot-date-full" aria-label="Slot date">
+          <input type="date" name="slot_date" value="{{$slot.Date}}" class="slot-date-full" aria-label="Slot date" data-date-input>
           <div class="slot-time-range">
             <div class="time-field" data-time-field>
               <input type="time" name="slot_start_time" value="{{$slot.StartTime}}" step="900" aria-label="Start time" data-time-input>
-              <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
               <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
               <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
               <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
             </div>
-            <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
-            <div class="time-field" data-time-field>
-              <input type="time" name="slot_end_time" value="{{$slot.EndTime}}" step="900" aria-label="End time" data-time-input>
-              <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
-              <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
-              <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
-              <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+            <div class="slot-time-end-group">
+              <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+              <div class="time-field" data-time-field>
+                <input type="time" name="slot_end_time" value="{{$slot.EndTime}}" step="900" aria-label="End time" data-time-input>
+                <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+                <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+                <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+              </div>
             </div>
           </div>
           {{else}}
-          <input type="date" name="slot_date" value="{{$slot.Date}}" aria-label="Slot date">
+          <input type="date" name="slot_date" value="{{$slot.Date}}" aria-label="Slot date" data-date-input>
           {{end}}
+          <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
           <button type="button" class="btn-remove" data-remove-slot{{if eq (len $.Slots) 1}} hidden disabled{{end}}>Remove slot</button>
           {{if $slot.Error}}<p class="field-error">{{$slot.Error}}</p>{{end}}
         </div>
@@ -81,31 +82,33 @@
 
 <template id="slot-row-template-all_day">
   <div class="slot-row" data-slot-row>
-    <input type="date" name="slot_date" aria-label="Slot date">
+    <input type="date" name="slot_date" aria-label="Slot date" data-date-input>
+    <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
     <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
   </div>
 </template>
 
 <template id="slot-row-template-date_time">
   <div class="slot-row" data-slot-row>
-    <input type="date" name="slot_date" class="slot-date-full" aria-label="Slot date">
+    <input type="date" name="slot_date" class="slot-date-full" aria-label="Slot date" data-date-input>
     <div class="slot-time-range">
       <div class="time-field" data-time-field>
         <input type="time" name="slot_start_time" step="900" aria-label="Start time" data-time-input>
-        <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
         <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
         <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
         <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
       </div>
-      <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
-      <div class="time-field" data-time-field>
-        <input type="time" name="slot_end_time" step="900" aria-label="End time" data-time-input>
-        <button type="button" class="btn-time-dropdown-toggle" data-time-dropdown-toggle aria-haspopup="listbox" aria-label="Choose an hour">▾</button>
-        <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
-        <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
-        <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+      <div class="slot-time-end-group">
+        <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+        <div class="time-field" data-time-field>
+          <input type="time" name="slot_end_time" step="900" aria-label="End time" data-time-input>
+          <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+          <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+          <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+        </div>
       </div>
     </div>
+    <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
     <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
   </div>
 </template>

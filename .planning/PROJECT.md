@@ -2,18 +2,20 @@
 
 ## Current State
 
-**v1.0 shipped 2026-08-25.** All 23 v1 requirements delivered and verified across 4 phases (Poll Creation & Docker, Voting, Results Grid, Admin Management). Milestone audit passed with zero gaps and zero outstanding tech debt. Full history: [`.planning/milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md) and [`.planning/milestones/v1.0-REQUIREMENTS.md`](milestones/v1.0-REQUIREMENTS.md).
+**v1.1 shipped 2026-08-27.** Poll-creation slot picker UX improvements (SLOT-01..05) delivered and verified: consistent time-field sizing with narrow-screen wrapping, click-anywhere popups on both date and time inputs, start-time auto-fill/±15-linked end time, per-slot Copy button, and server-side exact-duplicate-slot rejection with accurate error copy. Two rounds of manual testing caught and fixed 3 real bugs (row overflow, auto-fill not firing via the custom dropdown, misleading error copy on a missing date) beyond the original 5 requirements.
+
+**v1.0 shipped 2026-08-25.** All 23 v1 requirements delivered and verified across 4 phases (Poll Creation & Docker, Voting, Results Grid, Admin Management). Full history: [`.planning/milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md) and [`.planning/milestones/v1.0-REQUIREMENTS.md`](milestones/v1.0-REQUIREMENTS.md).
 
 ## Next Milestone Goals
 
-No milestone is currently active. Candidate v2 scope already identified (see the archived v1.0 requirements' "v2 Requirements" section):
+No milestone is currently active. Run `/gsd-new-milestone` when ready to scope the next one.
+
+## Deferred (v2 candidates, not in this milestone)
 
 - Notifications (email/webhook on new responses)
 - Timezone-aware slot display
 - Calendar (.ics) export
 - Poll "finalize" step that locks in the chosen slot and notifies participants
-
-Run `/gsd-new-milestone` when ready to scope the next milestone.
 
 ## What This Is
 
@@ -36,9 +38,15 @@ An organizer can create a poll of date/time options and get back, without any si
 - ✓ Admin can edit or delete the poll — Phase 4
 - ✓ Works well on both desktop and mobile browsers — Phase 1 + Phase 2 + Phase 3 + Phase 4 (every screen confirmed at mobile width)
 
+- ✓ Time-picker button height matches the +/-15/dropdown buttons visually — Phase 5
+- ✓ Clicking anywhere on a date or time input opens its picker/dropdown — Phase 5
+- ✓ Selecting a start time auto-fills the end time to +1 hour; ±15 steppers on start also shift end — Phase 5
+- ✓ A "Copy" button per slot duplicates that slot's values into a new row — Phase 5
+- ✓ Poll submission is rejected if it contains two exact-duplicate slots, with accurate row-level error copy — Phase 5
+
 ### Active
 
-(None — all v1 requirements shipped and validated. See v2 candidates already tracked in `.planning/REQUIREMENTS.md`: notifications, timezone handling, calendar export, poll finalization.)
+(None — v1.1 shipped and validated.)
 
 ### Out of Scope
 
@@ -100,4 +108,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-25 after Phase 4 (v1 complete)*
+*Last updated: 2026-08-27 after Phase 5 (v1.1 complete)*

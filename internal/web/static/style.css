@@ -158,6 +158,30 @@ textarea:focus {
   display: none;
 }
 
+/* Phase 5 (v1.1) — per-slot "Copy" button (SLOT-04). Named .btn-copy-slot
+   rather than .btn-copy: .btn-copy already exists (links.html "Copy link"
+   button, styled solid-accent, wired via copy.js's document-wide
+   ".btn-copy" click listener) — reusing that class name here would both
+   override the existing rule's cascade and let copy.js's clipboard handler
+   attach to these buttons if it were ever loaded on this page. */
+.btn-copy-slot {
+  min-height: 44px;
+  padding: var(--space-sm) var(--space-md);
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.btn-copy-slot:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
 .toggle-group {
   display: flex;
   border: 1px solid var(--color-border);
@@ -224,8 +248,18 @@ textarea:focus {
 
 .slot-time-range {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   flex: 1 1 100%;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.slot-time-end-group {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  min-width: 0;
   gap: var(--space-sm);
 }
 
@@ -395,18 +429,19 @@ textarea:focus {
   position: relative;
   display: flex;
   align-items: center;
-  flex: 1;
-  min-width: 220px;
+  flex: 1 1 180px;
+  min-width: 180px;
   gap: var(--space-xs);
 }
 
 .time-field input[type="time"] {
   flex: 1;
   min-width: 90px;
+  min-height: 44px;
+  box-sizing: border-box;
 }
 
-.btn-time-step,
-.btn-time-dropdown-toggle {
+.btn-time-step {
   flex: 0 0 auto;
   min-height: 44px;
   min-width: 44px;
@@ -420,8 +455,7 @@ textarea:focus {
   cursor: pointer;
 }
 
-.btn-time-step:hover,
-.btn-time-dropdown-toggle:hover {
+.btn-time-step:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }

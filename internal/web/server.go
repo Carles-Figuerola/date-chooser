@@ -27,8 +27,23 @@ const dateTimeLayout = "2006-01-02T15:04"
 const bannerErrorCopy = "Check the highlighted fields and try again."
 
 // rowErrorCopy is the exact UI-SPEC row-level error shown under a date+time
-// slot row whose end is not strictly after its start (or is incomplete).
+// slot row whose end is not strictly after its start.
 const rowErrorCopy = "End time must be after start time."
+
+// dateRequiredCopy is the row-level error shown when a date+time slot row
+// has a start and/or end time but no date — distinct from rowErrorCopy so
+// the organizer isn't told about a start/end ordering problem that doesn't
+// exist yet.
+const dateRequiredCopy = "Enter a date for this slot."
+
+// timesRequiredCopy is the row-level error shown when a date+time slot row
+// has a date but is missing a start and/or end time.
+const timesRequiredCopy = "Enter both a start and end time."
+
+// duplicateSlotCopy is the exact row-level error shown on every row of an
+// exact-duplicate group (SLOT-05). Position-neutral wording, since ALL
+// members of a duplicate group are flagged, not just the second occurrence.
+const duplicateSlotCopy = "This slot is a duplicate of another slot."
 
 // nameRequiredCopy is the exact UI-SPEC inline field error shown under the
 // display-name field on the voting form when it is blank.
@@ -191,6 +206,9 @@ func (s *Server) handleCreatePoll(w http.ResponseWriter, r *http.Request) {
 	if rowErr {
 		hasError = true
 	}
+	if markDuplicateSlots(pollType, view.Slots) {
+		hasError = true
+	}
 	if len(slots) == 0 {
 		hasError = true
 	}
@@ -238,6 +256,47 @@ func parseSlots(pollType string, form map[string][]string) ([]slotView, []store.
 		return parseDateTimeSlots(form["slot_date"], form["slot_start_time"], form["slot_end_time"])
 	}
 	return parseAllDaySlots(form["slot_date"])
+}
+
+// markDuplicateSlots scans views for exact-duplicate rows per pollType's
+// duplicate-match rule (SLOT-05): all_day rows duplicate when they share the
+// same Date; date_time rows duplicate when they share the same
+// Date+StartTime+EndTime. Incomplete rows (missing a field the match rule
+// depends on) are never compared — they cannot be a duplicate.
+//
+// Every row in a duplicate group gets its Error field set (not just the
+// second occurrence), so 3+-way groups and multiple independent duplicate
+// pairs are all flagged. Keys are joined with "\x00" (NUL) so date/time text
+// can never collide across field boundaries (threat T-05-02). Returns true
+// iff at least one duplicate group was found.
+func markDuplicateSlots(pollType string, views []slotView) bool {
+	seen := make(map[string][]int)
+	for i, v := range views {
+		var key string
+		if pollType == "date_time" {
+			if v.Date == "" || v.StartTime == "" || v.EndTime == "" {
+				continue
+			}
+			key = v.Date + "\x00" + v.StartTime + "\x00" + v.EndTime
+		} else {
+			if v.Date == "" {
+				continue
+			}
+			key = v.Date
+		}
+		seen[key] = append(seen[key], i)
+	}
+
+	found := false
+	for _, idxs := range seen {
+		if len(idxs) > 1 {
+			found = true
+			for _, i := range idxs {
+				views[i].Error = duplicateSlotCopy
+			}
+		}
+	}
+	return found
 }
 
 func parseAllDaySlots(dates []string) ([]slotView, []store.NewSlotInput, bool) {
@@ -290,19 +349,23 @@ func parseDateTimeSlots(dates, startTimes, endTimes []string) ([]slotView, []sto
 		}
 
 		row := slotView{Date: date, StartTime: startTime, EndTime: endTime}
-		start, end := "", ""
-		if date != "" && startTime != "" {
-			start = date + "T" + startTime
-		}
-		if date != "" && endTime != "" {
-			end = date + "T" + endTime
-		}
-		if valid := isValidDateTimeRange(start, end); valid {
-			endCopy := end
-			slots = append(slots, store.NewSlotInput{StartsAt: start, EndsAt: &endCopy})
-		} else {
-			row.Error = rowErrorCopy
+		switch {
+		case date == "":
+			row.Error = dateRequiredCopy
 			hasRowError = true
+		case startTime == "" || endTime == "":
+			row.Error = timesRequiredCopy
+			hasRowError = true
+		default:
+			start := date + "T" + startTime
+			end := date + "T" + endTime
+			if isValidDateTimeRange(start, end) {
+				endCopy := end
+				slots = append(slots, store.NewSlotInput{StartsAt: start, EndsAt: &endCopy})
+			} else {
+				row.Error = rowErrorCopy
+				hasRowError = true
+			}
 		}
 		views = append(views, row)
 	}
