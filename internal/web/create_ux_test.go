@@ -34,14 +34,15 @@ func TestSlotUX_TimeFieldHeight(t *testing.T) {
 	}
 }
 
-// TestSlotUX_ClickAnywhereOpensDropdown proves create.js wires a click
-// listener on the time input itself that opens the same dropdown the ▾
-// toggle opens, and that the handler stops propagation so the document-level
-// closeAllTimeDropdowns listener doesn't instantly re-close it (SLOT-02).
+// TestSlotUX_ClickAnywhereOpensDropdown proves slot-time-fields.js (shared
+// by create.js and edit.js) wires a click listener on the time input itself
+// that opens the same dropdown the ▾ toggle opens, and that the handler
+// stops propagation so the document-level closeAllTimeDropdowns listener
+// doesn't instantly re-close it (SLOT-02).
 func TestSlotUX_ClickAnywhereOpensDropdown(t *testing.T) {
-	data, err := os.ReadFile("static/create.js")
+	data, err := os.ReadFile("static/slot-time-fields.js")
 	if err != nil {
-		t.Fatalf("reading static/create.js: %v", err)
+		t.Fatalf("reading static/slot-time-fields.js: %v", err)
 	}
 	content := string(data)
 
@@ -63,19 +64,19 @@ func TestSlotUX_ClickAnywhereOpensDropdown(t *testing.T) {
 // the start-time input that fills an empty end time with start+1h and never
 // clobbers a non-empty end time (SLOT-03).
 func TestSlotUX_AutoFillEndTime(t *testing.T) {
-	data, err := os.ReadFile("static/create.js")
+	data, err := os.ReadFile("static/slot-time-fields.js")
 	if err != nil {
-		t.Fatalf("reading static/create.js: %v", err)
+		t.Fatalf("reading static/slot-time-fields.js: %v", err)
 	}
 	content := string(data)
 
 	if !strings.Contains(content, "slot_start_time") || !strings.Contains(content, `addEventListener("change"`) {
-		t.Fatalf("expected create.js to bind a change listener referencing slot_start_time, got no match")
+		t.Fatalf("expected slot-time-fields.js to bind a change listener referencing slot_start_time, got no match")
 	}
 
 	startIdx := strings.Index(content, `startInput.addEventListener("change"`)
 	if startIdx == -1 {
-		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in create.js")
+		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in slot-time-fields.js")
 	}
 	handlerRegion := content[startIdx:]
 	if len(handlerRegion) > 1200 {
@@ -93,6 +94,129 @@ func TestSlotUX_AutoFillEndTime(t *testing.T) {
 
 	if !strings.Contains(handlerRegion, "+ 60") || !strings.Contains(handlerRegion, "1440") {
 		t.Fatalf("expected the +1h wrap math (\"+ 60\" and \"1440\") in the handler, got: %s", handlerRegion)
+	}
+}
+
+// TestSlotUX_PreserveDurationOnStartEdit proves that when the end time is
+// already populated (e.g. right after Copy), changing the start time shifts
+// the end time by the previous duration instead of leaving it stale.
+func TestSlotUX_PreserveDurationOnStartEdit(t *testing.T) {
+	data, err := os.ReadFile("static/slot-time-fields.js")
+	if err != nil {
+		t.Fatalf("reading static/slot-time-fields.js: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "previousStartValue") {
+		t.Fatalf("expected slot-time-fields.js to track a previousStartValue for the start-time change handler, got no match")
+	}
+
+	startIdx := strings.Index(content, `startInput.addEventListener("change"`)
+	if startIdx == -1 {
+		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in slot-time-fields.js")
+	}
+	handlerRegion := content[startIdx:]
+	if len(handlerRegion) > 1600 {
+		handlerRegion = handlerRegion[:1600]
+	}
+
+	if !strings.Contains(handlerRegion, "parseTimeValue(previousStartValue)") {
+		t.Fatalf("expected the handler to parse the previous start value to compute the existing duration, got: %s", handlerRegion)
+	}
+	durationIdx := strings.Index(handlerRegion, "var duration")
+	assignIdx := strings.LastIndex(handlerRegion, "endInput.value =")
+	if durationIdx == -1 || assignIdx == -1 || durationIdx >= assignIdx {
+		t.Fatalf("expected a duration computed from the previous start/end before the final endInput.value assignment, got: %s", handlerRegion)
+	}
+}
+
+// TestSlotUX_EditPageSharesTimeFieldWiring proves edit.html loads the same
+// slot-time-fields.js module as create.html and carries the same
+// data-time-field/data-date-input markup, so the click-anywhere dropdown,
+// ±15 steppers, and start/end duration-preserving behavior aren't limited to
+// the create-poll page (a real gap: Phase 5/v1.1 only touched create.html).
+func TestSlotUX_EditPageSharesTimeFieldWiring(t *testing.T) {
+	html, err := os.ReadFile("templates/edit.html")
+	if err != nil {
+		t.Fatalf("reading templates/edit.html: %v", err)
+	}
+	htmlContent := string(html)
+
+	if !strings.Contains(htmlContent, `src="/static/slot-time-fields.js"`) {
+		t.Fatalf("expected edit.html to load /static/slot-time-fields.js, got no match")
+	}
+	if !strings.Contains(htmlContent, "data-time-field") {
+		t.Fatalf("expected edit.html to carry data-time-field markup, got no match")
+	}
+	if !strings.Contains(htmlContent, "data-date-input") {
+		t.Fatalf("expected edit.html to carry data-date-input markup, got no match")
+	}
+	if strings.Count(htmlContent, "data-time-field") < 4 {
+		t.Fatalf("expected data-time-field to appear at least 4 times (server-rendered row + 2 templates, 2 fields each), got %d", strings.Count(htmlContent, "data-time-field"))
+	}
+
+	js, err := os.ReadFile("static/edit.js")
+	if err != nil {
+		t.Fatalf("reading static/edit.js: %v", err)
+	}
+	if !strings.Contains(string(js), "window.DateChooserSlotFields.wireRow(row)") {
+		t.Fatalf("expected edit.js's wireRow to call window.DateChooserSlotFields.wireRow(row), got no match")
+	}
+}
+
+// TestSlotUX_SecondaryButtonHiddenAttributeRespected proves .btn-secondary
+// has a [hidden] override rule, matching the existing .btn-remove[hidden]
+// pattern. Without it, .btn-secondary's unconditional "display: inline-flex"
+// (equal CSS specificity to the browser's default [hidden]{display:none})
+// wins by source order, so the edit page's Undo button — which is
+// .btn-secondary and starts with the hidden attribute — renders visible
+// from page load regardless of whether its row is actually marked for
+// removal, making it look like clicking it "does nothing" when the row
+// isn't marked.
+func TestSlotUX_SecondaryButtonHiddenAttributeRespected(t *testing.T) {
+	data, err := os.ReadFile("static/style.css")
+	if err != nil {
+		t.Fatalf("reading static/style.css: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, ".btn-secondary[hidden]") {
+		t.Fatalf("expected a .btn-secondary[hidden] rule in style.css, got none")
+	}
+}
+
+// TestSlotUX_EditPageHasCopyButton proves edit.html carries the same
+// data-copy-slot "Copy" button as create.html (server-rendered row + both
+// templates), and that edit.js wires it using the same
+// template-clone-and-append pattern as create.js's Copy handler (SLOT-04).
+// edit.html never got the Copy button when Phase 5/v1.1 added it — a real
+// gap, not a regression.
+func TestSlotUX_EditPageHasCopyButton(t *testing.T) {
+	html, err := os.ReadFile("templates/edit.html")
+	if err != nil {
+		t.Fatalf("reading templates/edit.html: %v", err)
+	}
+	htmlContent := string(html)
+
+	count := strings.Count(htmlContent, "data-copy-slot")
+	if count < 3 {
+		t.Fatalf("expected data-copy-slot to appear at least 3 times in edit.html (server-rendered row + 2 templates), got %d", count)
+	}
+	if !strings.Contains(htmlContent, ">Copy<") {
+		t.Fatalf("expected a Copy button labeled \"Copy\" in edit.html, got no match")
+	}
+
+	js, err := os.ReadFile("static/edit.js")
+	if err != nil {
+		t.Fatalf("reading static/edit.js: %v", err)
+	}
+	jsContent := string(js)
+
+	if !strings.Contains(jsContent, "data-copy-slot") {
+		t.Fatalf("expected edit.js to reference data-copy-slot, got no match")
+	}
+	if !strings.Contains(jsContent, "appendChild") {
+		t.Fatalf("expected the copy handler to append the new row, got no match")
 	}
 }
 

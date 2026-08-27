@@ -46,16 +46,29 @@
           <input type="hidden" name="slot_removed" value="" data-slot-removed>
           <div class="slot-row-fields" data-slot-row-fields>
             {{if eq $.PollType "date_time"}}
-            <input type="date" name="slot_date" value="{{$slot.Date}}" class="slot-date-full" aria-label="Slot date">
+            <input type="date" name="slot_date" value="{{$slot.Date}}" class="slot-date-full" aria-label="Slot date" data-date-input>
             <div class="slot-time-range">
-              <input type="time" name="slot_start_time" value="{{$slot.StartTime}}" step="900" aria-label="Start time">
-              <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
-              <input type="time" name="slot_end_time" value="{{$slot.EndTime}}" step="900" aria-label="End time">
+              <div class="time-field" data-time-field>
+                <input type="time" name="slot_start_time" value="{{$slot.StartTime}}" step="900" aria-label="Start time" data-time-input>
+                <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+                <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+                <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+              </div>
+              <div class="slot-time-end-group">
+                <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+                <div class="time-field" data-time-field>
+                  <input type="time" name="slot_end_time" value="{{$slot.EndTime}}" step="900" aria-label="End time" data-time-input>
+                  <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+                  <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+                  <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+                </div>
+              </div>
             </div>
             {{else}}
-            <input type="date" name="slot_date" value="{{$slot.Date}}" aria-label="Slot date">
+            <input type="date" name="slot_date" value="{{$slot.Date}}" aria-label="Slot date" data-date-input>
             {{end}}
           </div>
+          <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
           <button type="button" class="btn-remove" data-remove-slot{{if eq (len $.Slots) 1}} hidden disabled{{end}}>Remove slot</button>
           <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
           {{if $slot.Error}}<p class="field-error">{{$slot.Error}}</p>{{end}}
@@ -92,8 +105,9 @@
     <input type="hidden" name="slot_id" value="" data-slot-id>
     <input type="hidden" name="slot_removed" value="" data-slot-removed>
     <div class="slot-row-fields" data-slot-row-fields>
-      <input type="date" name="slot_date" aria-label="Slot date">
+      <input type="date" name="slot_date" aria-label="Slot date" data-date-input>
     </div>
+    <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
     <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
     <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
     <p class="field-error slot-removal-inline-warning" data-slot-warning hidden></p>
@@ -105,18 +119,32 @@
     <input type="hidden" name="slot_id" value="" data-slot-id>
     <input type="hidden" name="slot_removed" value="" data-slot-removed>
     <div class="slot-row-fields" data-slot-row-fields>
-      <input type="date" name="slot_date" class="slot-date-full" aria-label="Slot date">
+      <input type="date" name="slot_date" class="slot-date-full" aria-label="Slot date" data-date-input>
       <div class="slot-time-range">
-        <input type="time" name="slot_start_time" step="900" aria-label="Start time">
-        <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
-        <input type="time" name="slot_end_time" step="900" aria-label="End time">
+        <div class="time-field" data-time-field>
+          <input type="time" name="slot_start_time" step="900" aria-label="Start time" data-time-input>
+          <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+          <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+          <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+        </div>
+        <div class="slot-time-end-group">
+          <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+          <div class="time-field" data-time-field>
+            <input type="time" name="slot_end_time" step="900" aria-label="End time" data-time-input>
+            <ul class="time-dropdown" data-time-dropdown role="listbox" hidden></ul>
+            <button type="button" class="btn-time-step" data-time-step="-15" aria-label="Subtract 15 minutes">−15</button>
+            <button type="button" class="btn-time-step" data-time-step="15" aria-label="Add 15 minutes">+15</button>
+          </div>
+        </div>
       </div>
     </div>
+    <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
     <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
     <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
     <p class="field-error slot-removal-inline-warning" data-slot-warning hidden></p>
   </div>
 </template>
 
+<script src="/static/slot-time-fields.js" defer></script>
 <script src="/static/edit.js" defer></script>
 {{end}}

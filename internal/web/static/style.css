@@ -158,6 +158,10 @@ textarea:focus {
   display: none;
 }
 
+.btn-secondary[hidden] {
+  display: none;
+}
+
 /* Phase 5 (v1.1) — per-slot "Copy" button (SLOT-04). Named .btn-copy-slot
    rather than .btn-copy: .btn-copy already exists (links.html "Copy link"
    button, styled solid-accent, wired via copy.js's document-wide
@@ -626,8 +630,17 @@ textarea:focus {
   cursor: not-allowed;
 }
 
+.slot-row-fields {
+  display: flex;
+  flex-wrap: wrap;
+  flex: 1 1 100%;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
 .slot-row-marked {
-  background: var(--color-bg);
+  background: #FEF2F2;
+  border: 1px solid var(--color-destructive);
 }
 
 .slot-row-marked .slot-row-fields {
