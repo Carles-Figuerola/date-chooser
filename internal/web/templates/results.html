@@ -1,0 +1,51 @@
+{{define "results"}}
+<div class="results-section">
+  <h2 class="heading">Results</h2>
+  <div class="results-scroll">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th class="results-label-col"></th>
+          {{range .Participants}}
+          <th title="{{.DisplayName}}">{{.DisplayName}}</th>
+          {{end}}
+        </tr>
+      </thead>
+      <tbody>
+        {{$hasResponses := .HasResponses}}
+        {{range .Rows}}
+        <tr{{if .BestFit}} class="results-row-best"{{end}}>
+          <td class="results-label-col">
+            <span class="label">{{.Label}}</span>
+            {{if $hasResponses}}
+            <div class="results-tally">{{.YesCount}} Yes · {{.NoCount}} No · {{.MaybeCount}} Maybe</div>
+            {{if .BestFit}}<span class="results-badge-best">Best fit</span>{{end}}
+            {{else}}
+            <div class="results-tally results-tally-empty">No responses yet.</div>
+            {{end}}
+          </td>
+          {{range .Cells}}
+          <td class="results-cell">
+            {{if eq .Answer "yes"}}<span class="results-badge results-badge-yes">✓</span>
+            {{else if eq .Answer "no"}}<span class="results-badge results-badge-no">✗</span>
+            {{else if eq .Answer "maybe"}}<span class="results-badge results-badge-maybe">?</span>
+            {{else}}<span class="results-missing">—</span>
+            {{end}}
+          </td>
+          {{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{{if .Comments}}
+<div class="results-section comments-section">
+  <h2 class="heading">Comments</h2>
+  {{range .Comments}}
+  <p class="body"><span class="label">{{.DisplayName}}</span>: {{.Comment}}</p>
+  {{end}}
+</div>
+{{end}}
+{{end}}

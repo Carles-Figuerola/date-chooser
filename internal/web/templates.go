@@ -31,11 +31,11 @@ func parseTemplates() (*pageTemplates, error) {
 	if err != nil {
 		return nil, err
 	}
-	links, err := template.ParseFS(templateFS, "templates/layout.html", "templates/links.html")
+	links, err := template.ParseFS(templateFS, "templates/layout.html", "templates/links.html", "templates/results.html")
 	if err != nil {
 		return nil, err
 	}
-	vote, err := template.ParseFS(templateFS, "templates/layout.html", "templates/vote.html")
+	vote, err := template.ParseFS(templateFS, "templates/layout.html", "templates/vote.html", "templates/results.html")
 	if err != nil {
 		return nil, err
 	}

@@ -1,10 +1,10 @@
 ---
 schema_version: 1
-open_count: 5
+open_count: 7
 waived_count: 0
 fixed_count: 3
-total_count: 8
-last_updated: 2026-08-25T16:07:01.398Z
+total_count: 10
+last_updated: 2026-08-25T18:42:50.966Z
 ---
 
 # Broken Windows Ledger
@@ -23,6 +23,8 @@ last_updated: 2026-08-25T16:07:01.398Z
 | 6 | 02 | stub | internal/web/templates/vote.html |  | Yes/No/Maybe renders as native radios, not the pill-button group - resolved in Plan 02-03 | fixed |  | 2026-08-25T15:55:09.567Z | 2026-08-25T16:07:01.118Z |
 | 7 | 02 | unrun-verify | internal/web/static/style.css |  | Pill tri-color checked states, 44px tap targets, and no horizontal overflow at ~360px viewport - CSS in place but unverified in a real browser (Go httptest cannot render CSS). | open |  | 2026-08-25T16:07:01.266Z |  |
 | 8 | 02 | unrun-verify | internal/web/static/vote.js |  | Submit-guard behavior (disable + 'Saving...' label, blocks a second POST) and the JS-disabled fallback submit - implemented and grep-verified only, not executed in a real browser (Go httptest cannot run JS). | open |  | 2026-08-25T16:07:01.398Z |  |
+| 9 | 03 | unrun-verify | internal/web/static/style.css |  | Sticky slot-label column (position:sticky; left:0) must stay visible while the participant columns scroll horizontally at a ~360px viewport - CSS in place but unverified in a real browser (Go httptest cannot render CSS). | open |  | 2026-08-25T18:42:50.823Z |  |
+| 10 | 03 | unrun-verify | internal/web/templates/results.html |  | Participant column-header ellipsis truncation (max-width:140px) must actually trigger for a long display name, with the full name still recoverable via the native title attribute - implemented per UI-SPEC but unverified in a real browser (Go httptest cannot render CSS truncation). | open |  | 2026-08-25T18:42:50.966Z |  |
 
 ````json
 [
@@ -120,6 +122,30 @@ last_updated: 2026-08-25T16:07:01.398Z
     "status": "open",
     "reason": "",
     "recorded_at": "2026-08-25T16:07:01.398Z",
+    "resolved_at": null
+  },
+  {
+    "id": 9,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "internal/web/static/style.css",
+    "line": null,
+    "description": "Sticky slot-label column (position:sticky; left:0) must stay visible while the participant columns scroll horizontally at a ~360px viewport - CSS in place but unverified in a real browser (Go httptest cannot render CSS).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T18:42:50.823Z",
+    "resolved_at": null
+  },
+  {
+    "id": 10,
+    "kind": "unrun-verify",
+    "phase": "03",
+    "file": "internal/web/templates/results.html",
+    "line": null,
+    "description": "Participant column-header ellipsis truncation (max-width:140px) must actually trigger for a long display name, with the full name still recoverable via the native title attribute - implemented per UI-SPEC but unverified in a real browser (Go httptest cannot render CSS truncation).",
+    "status": "open",
+    "reason": "",
+    "recorded_at": "2026-08-25T18:42:50.966Z",
     "resolved_at": null
   }
 ]

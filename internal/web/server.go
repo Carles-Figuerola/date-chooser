@@ -326,12 +326,18 @@ func (s *Server) handleLinksPage(w http.ResponseWriter, r *http.Request) {
 	ptoken := r.PathValue("ptoken")
 	atoken := r.PathValue("atoken")
 
-	poll, _, err := s.store.PollByTokens(r.Context(), ptoken, atoken)
+	poll, slots, err := s.store.PollByTokens(r.Context(), ptoken, atoken)
 	if err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.NotFound(w, r)
 			return
 		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	resultParticipants, resultAnswers, err := s.store.ResponsesByPollID(r.Context(), poll.ID)
+	if err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
@@ -349,12 +355,14 @@ func (s *Server) handleLinksPage(w http.ResponseWriter, r *http.Request) {
 		AdminPath       string
 		ParticipantURL  string
 		AdminURL        string
+		Results         resultsGridView
 	}{
 		Poll:            poll,
 		ParticipantPath: participantPath,
 		AdminPath:       adminPath,
 		ParticipantURL:  scheme + "://" + r.Host + participantPath,
 		AdminURL:        scheme + "://" + r.Host + adminPath,
+		Results:         buildResultsGridView(poll.PollType, slots, resultParticipants, resultAnswers),
 	}
 
 	if err := s.tmpl.links.ExecuteTemplate(w, "layout", data); err != nil {
@@ -373,6 +381,7 @@ type voteFormView struct {
 	Saved       bool
 	NameError   string
 	BannerError string
+	Results     resultsGridView
 }
 
 // voteSlotView is one rendered slot row: its human-readable label and
@@ -382,6 +391,131 @@ type voteSlotView struct {
 	Label    string
 	Selected string
 	Error    string
+}
+
+// resultsGridView is the data passed to the shared "results" partial: the
+// slots x participants grid, its per-slot tallies and best-fit ranking, and
+// the comments list. Built by buildResultsGridView from raw store data —
+// shared, per T-03-02, between the participant route (this plan) and the
+// admin route (Plan 03-02), so both routes render identically off the same
+// view-model.
+type resultsGridView struct {
+	HasResponses bool
+	Participants []resultsParticipant
+	Rows         []resultsRow
+	Comments     []resultsComment
+}
+
+// resultsParticipant is one grid column header. Only DisplayName is ever
+// exposed here — never CookieToken (threat T-03-02).
+type resultsParticipant struct {
+	DisplayName string
+}
+
+// resultsRow is one grid row (one slot): its label, one cell per
+// participant in column order, per-answer tallies, and whether this row is
+// one of the (possibly tied) top-ranked "best fit" slots.
+type resultsRow struct {
+	Label      string
+	Cells      []resultsCell
+	YesCount   int
+	NoCount    int
+	MaybeCount int
+	BestFit    bool
+}
+
+// resultsCell is one grid data cell. Answer is "yes", "no", "maybe", or ""
+// when the participant has no stored response for this slot.
+type resultsCell struct {
+	Answer string
+}
+
+// resultsComment is one line in the Comments section: a participant's
+// display name paired with their non-empty comment.
+type resultsComment struct {
+	DisplayName string
+	Comment     string
+}
+
+// buildResultsGridView shapes raw participants/slots/answers (as returned by
+// store.ResponsesByPollID) into the results grid's view-model: one column
+// per participant (in the given order), one row per slot with per-cell
+// answers and Yes/No/Maybe tallies, best-slot ranking via rankBestSlots, and
+// the comments list (non-empty comments only, in participant order).
+func buildResultsGridView(pollType string, slots []store.Slot, participants []store.Participant, answers map[int64]map[int64]string) resultsGridView {
+	view := resultsGridView{
+		HasResponses: len(participants) > 0,
+		Participants: make([]resultsParticipant, len(participants)),
+		Rows:         make([]resultsRow, len(slots)),
+	}
+
+	for i, p := range participants {
+		view.Participants[i] = resultsParticipant{DisplayName: p.DisplayName}
+		if comment := strings.TrimSpace(p.Comment); comment != "" {
+			view.Comments = append(view.Comments, resultsComment{DisplayName: p.DisplayName, Comment: p.Comment})
+		}
+	}
+
+	for i, sl := range slots {
+		row := resultsRow{
+			Label: slotLabel(pollType, sl),
+			Cells: make([]resultsCell, len(participants)),
+		}
+		for j, p := range participants {
+			answer := answers[p.ID][sl.ID]
+			row.Cells[j] = resultsCell{Answer: answer}
+			switch answer {
+			case "yes":
+				row.YesCount++
+			case "no":
+				row.NoCount++
+			case "maybe":
+				row.MaybeCount++
+			}
+		}
+		view.Rows[i] = row
+	}
+
+	best := rankBestSlots(view.Rows)
+	for i := range view.Rows {
+		view.Rows[i].BestFit = best[i]
+	}
+
+	return view
+}
+
+// rankBestSlots returns the set of row indices (by position in rows) tied
+// for the top rank: most Yes (descending), tie-broken by fewest No
+// (ascending) — Maybe never factors into the ranking, per 03-CONTEXT.md's
+// Best-Slot Highlighting Rule. Returns an empty set when there are zero rows
+// or when the total of every tally across every row is zero (i.e. no one
+// has responded at all yet) — "best" is meaningless with no data.
+func rankBestSlots(rows []resultsRow) map[int]bool {
+	best := make(map[int]bool)
+	if len(rows) == 0 {
+		return best
+	}
+
+	total := 0
+	for _, r := range rows {
+		total += r.YesCount + r.NoCount + r.MaybeCount
+	}
+	if total == 0 {
+		return best
+	}
+
+	bestYes, bestNo := -1, 0
+	for _, r := range rows {
+		if r.YesCount > bestYes || (r.YesCount == bestYes && r.NoCount < bestNo) {
+			bestYes, bestNo = r.YesCount, r.NoCount
+		}
+	}
+	for i, r := range rows {
+		if r.YesCount == bestYes && r.NoCount == bestNo {
+			best[i] = true
+		}
+	}
+	return best
 }
 
 // slotLabel formats a persisted slot for display, per poll type. On any
@@ -460,6 +594,13 @@ func (s *Server) handleVoteForm(w http.ResponseWriter, r *http.Request) {
 			view.Slots[i].Selected = answers[sl.ID]
 		}
 	}
+
+	resultParticipants, resultAnswers, err := s.store.ResponsesByPollID(r.Context(), poll.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	view.Results = buildResultsGridView(poll.PollType, slots, resultParticipants, resultAnswers)
 
 	s.renderVoteForm(w, view)
 }

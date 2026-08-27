@@ -465,3 +465,113 @@ textarea:focus {
   font-weight: 600;
   color: var(--color-accent);
 }
+
+/* Phase 3 — results grid (03-UI-SPEC.md Grid Structure). Reuses only tokens
+   declared in the :root block above; no new hex values, no new font size or
+   weight. */
+
+.results-section {
+  max-width: 960px;
+  margin: var(--space-2xl) auto 0;
+  padding: 0 var(--space-lg);
+}
+
+.results-section.comments-section {
+  margin-top: var(--space-md);
+}
+
+.results-scroll {
+  overflow-x: auto;
+}
+
+.results-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.results-table th,
+.results-table td {
+  padding: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.results-table thead th {
+  background: var(--color-surface);
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.results-table td.results-cell {
+  min-width: 48px;
+  text-align: center;
+}
+
+/* Sticky slot-label column: stays visible while the participant columns
+   scroll horizontally on narrow viewports (backstop — see WINDOWS.md). */
+.results-label-col {
+  position: sticky;
+  left: 0;
+  background: var(--color-surface);
+  min-width: 168px;
+  border-right: 1px solid var(--color-border);
+}
+
+.results-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 6px;
+  color: var(--color-surface);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.results-badge-yes {
+  background: var(--color-yes);
+}
+
+.results-badge-no {
+  background: var(--color-destructive);
+}
+
+.results-badge-maybe {
+  background: var(--color-text-muted);
+}
+
+.results-missing {
+  color: var(--color-text-muted);
+}
+
+.results-tally {
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.results-tally-empty {
+  color: var(--color-text-muted);
+}
+
+.results-row-best td {
+  background: #EFF6FF;
+}
+
+.results-row-best .results-label-col {
+  border-left: 3px solid var(--color-accent);
+}
+
+.results-badge-best {
+  display: inline-block;
+  margin-top: var(--space-xs);
+  color: var(--color-accent);
+  font-size: 14px;
+  font-weight: 600;
+}

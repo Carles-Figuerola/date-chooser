@@ -14,8 +14,8 @@ Date Chooser ships as four end-to-end vertical slices, each independently demoab
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Poll Creation & Dockerized Foundation** - Organizer creates a poll and gets participant/admin links, running in a Docker container with persistent SQLite storage (completed 2026-08-25)
-- [ ] **Phase 2: Voting End-to-End** - Participant opens the link with no account, votes Yes/No/Maybe with a comment, and can revise later
-- [ ] **Phase 3: Results Grid** - Participants and admin see the slots-by-participants grid with tallies, best-slot highlight, and comments
+- [x] **Phase 2: Voting End-to-End** - Participant opens the link with no account, votes Yes/No/Maybe with a comment, and can revise later (completed 2026-08-25)
+- [x] **Phase 3: Results Grid** - Participants and admin see the slots-by-participants grid with tallies, best-slot highlight, and comments (completed 2026-08-25)
 - [ ] **Phase 4: Admin Poll Management** - Organizer edits poll details and deletes responses or the whole poll via the secret admin link
 
 ## Phase Details
@@ -55,11 +55,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Participant can revisit the same participant link later, see their previous response pre-filled, and resubmit a changed response
   5. The voting page renders and works correctly on both narrow (mobile) and wide (desktop) screens
 
-**Plans:** 3 plans
+**Plans:** 3/3 plans complete
 
-- [ ] 02-01-PLAN.md — Tracer: end-to-end voting slice (participants/responses schema + store + GET/POST routes + HttpOnly cookie), happy path proven with revisit/resubmit
-- [ ] 02-02-PLAN.md — Server-side validation (name required, every slot answered, length caps) with exact error copy, plus the branded invalid-link 404 page
-- [ ] 02-03-PLAN.md — Voting UI: tri-color Yes/No/Maybe pill groups, confirmation banner, responsive layout (VOTE-06), and the vote.js submit guard
+- [x] 02-01-PLAN.md — Tracer: end-to-end voting slice (participants/responses schema + store + GET/POST routes + HttpOnly cookie), happy path proven with revisit/resubmit
+- [x] 02-02-PLAN.md — Server-side validation (name required, every slot answered, length caps) with exact error copy, plus the branded invalid-link 404 page
+- [x] 02-03-PLAN.md — Voting UI: tri-color Yes/No/Maybe pill groups, confirmation banner, responsive layout (VOTE-06), and the vote.js submit guard
+
 **UI hint**: yes
 
 ### Phase 3: Results Grid
@@ -76,7 +77,11 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. Participant comments are shown alongside their responses in the results view
   5. Opening the poll via the admin link shows the same results grid as the participant link
 
-**Plans**: TBD
+**Plans:** 2/2 plans complete
+
+- [x] 03-01-PLAN.md — Results-grid tracer: read-only store aggregation + tally/best-slot ranking + comments/zero-state rendering on the participant route (RES-01..04)
+- [x] 03-02-PLAN.md — Admin-route grid parity (ADM-01) + grid CSS (tri-color badges, sticky slot-label column, best-fit highlight)
+
 **UI hint**: yes
 
 ### Phase 4: Admin Poll Management
@@ -102,6 +107,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Poll Creation & Dockerized Foundation | 3/3 | Complete    | 2026-08-25 |
-| 2. Voting End-to-End | 0/3 | Not started | - |
-| 3. Results Grid | 0/TBD | Not started | - |
+| 2. Voting End-to-End | 3/3 | Complete    | 2026-08-25 |
+| 3. Results Grid | 2/2 | Complete    | 2026-08-25 |
 | 4. Admin Poll Management | 0/TBD | Not started | - |

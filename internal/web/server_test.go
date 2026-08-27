@@ -844,6 +844,361 @@ func TestNotFound_InvalidPollLink(t *testing.T) {
 	}
 }
 
+func TestResultsView_CommentsPopulated(t *testing.T) {
+	participants := []store.Participant{
+		{ID: 1, DisplayName: "Alice", Comment: "see you there"},
+		{ID: 2, DisplayName: "Bob", Comment: "   "},
+	}
+
+	view := buildResultsGridView("all_day", nil, participants, map[int64]map[int64]string{})
+
+	if len(view.Comments) != 1 {
+		t.Fatalf("expected exactly 1 comment, got %d: %v", len(view.Comments), view.Comments)
+	}
+	if view.Comments[0].DisplayName != "Alice" || view.Comments[0].Comment != "see you there" {
+		t.Fatalf("expected Alice's comment, got %+v", view.Comments[0])
+	}
+}
+
+func TestResultsView_CommentsEmpty(t *testing.T) {
+	participants := []store.Participant{
+		{ID: 1, DisplayName: "Alice", Comment: ""},
+		{ID: 2, DisplayName: "Bob", Comment: "   "},
+	}
+
+	view := buildResultsGridView("all_day", nil, participants, map[int64]map[int64]string{})
+
+	if len(view.Comments) != 0 {
+		t.Fatalf("expected zero comments, got %v", view.Comments)
+	}
+}
+
+func TestResults_Grid_ZeroResponses_ShowsNote(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, _ := createVotePollWithSlots(t, st, "Empty Poll", "ptok-empty-results", "atok-empty-results", 2)
+
+	resp, err := http.Get(ts.URL + "/poll/" + poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("GET error: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "No responses yet.") {
+		t.Fatalf("expected zero-response note, got: %s", bodyStr)
+	}
+	if strings.Contains(bodyStr, "Best fit") {
+		t.Fatalf("expected no Best fit badge at zero responses, got: %s", bodyStr)
+	}
+}
+
+func TestResults_Grid_MissingCell_ShowsDash(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Missing Cell Poll", "ptok-missing-cell", "atok-missing-cell", 2)
+
+	// Write directly through the store so only slot 0 has an answer,
+	// bypassing handleSubmitResponse's "every slot must be answered" gate
+	// (that validation is a Phase 2 concern, not this grid's rendering).
+	ctx := context.Background()
+	if _, err := st.SaveResponse(ctx, poll.ID, "cookie-missing-cell", "Carol", "", map[int64]string{slots[0].ID: "yes"}); err != nil {
+		t.Fatalf("SaveResponse() error: %v", err)
+	}
+
+	resp, err := http.Get(ts.URL + "/poll/" + poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("GET error: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "—") { // em dash
+		t.Fatalf("expected missing-cell dash fallback, got: %s", bodyStr)
+	}
+}
+
+func TestResults_Grid_CommentsSection_RendersAndEscapes(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Comment Poll", "ptok-comment-render", "atok-comment-render", 1)
+
+	form := url.Values{}
+	form.Set("display_name", "Eve")
+	form.Set("comment", "<b>x</b>")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", resp.StatusCode, body)
+	}
+
+	getResp, err := http.Get(ts.URL + "/poll/" + poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("GET error: %v", err)
+	}
+	defer getResp.Body.Close()
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "Comments</h2>") {
+		t.Fatalf("expected Comments heading, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "&lt;b&gt;x&lt;/b&gt;") {
+		t.Fatalf("expected escaped comment markup, got: %s", bodyStr)
+	}
+	if strings.Contains(bodyStr, "<b>x</b>") {
+		t.Fatalf("expected no live <b> tag from comment, got: %s", bodyStr)
+	}
+}
+
+func TestResults_Grid_NoComments_SectionOmitted(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "No Comment Poll", "ptok-no-comment", "atok-no-comment", 1)
+
+	form := url.Values{}
+	form.Set("display_name", "Frank")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", resp.StatusCode, body)
+	}
+
+	getResp, err := http.Get(ts.URL + "/poll/" + poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("GET error: %v", err)
+	}
+	defer getResp.Body.Close()
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if strings.Contains(bodyStr, "Comments</h2>") {
+		t.Fatalf("expected no Comments heading when no comments exist, got: %s", bodyStr)
+	}
+}
+
+func TestResultsView_Tally(t *testing.T) {
+	slots := []store.Slot{{ID: 1}, {ID: 2}}
+	participants := []store.Participant{{ID: 10, DisplayName: "Alice"}, {ID: 20, DisplayName: "Bob"}}
+	answers := map[int64]map[int64]string{
+		10: {1: "yes", 2: "no"},
+		20: {1: "yes", 2: "maybe"},
+	}
+
+	view := buildResultsGridView("all_day", slots, participants, answers)
+
+	if len(view.Rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(view.Rows))
+	}
+	rowA, rowB := view.Rows[0], view.Rows[1]
+	if rowA.YesCount != 2 || rowA.NoCount != 0 || rowA.MaybeCount != 0 {
+		t.Fatalf("expected row A tally 2/0/0, got %d/%d/%d", rowA.YesCount, rowA.NoCount, rowA.MaybeCount)
+	}
+	if rowB.YesCount != 0 || rowB.NoCount != 1 || rowB.MaybeCount != 1 {
+		t.Fatalf("expected row B tally 0/1/1, got %d/%d/%d", rowB.YesCount, rowB.NoCount, rowB.MaybeCount)
+	}
+}
+
+func TestRankBestSlots_ClearWinner(t *testing.T) {
+	rows := []resultsRow{{YesCount: 2, NoCount: 0}, {YesCount: 1, NoCount: 1}}
+	best := rankBestSlots(rows)
+	if !best[0] || best[1] {
+		t.Fatalf("expected only row 0 flagged BestFit, got %v", best)
+	}
+}
+
+func TestRankBestSlots_TieOnYes(t *testing.T) {
+	rows := []resultsRow{{YesCount: 2, NoCount: 0}, {YesCount: 2, NoCount: 0}}
+	best := rankBestSlots(rows)
+	if !best[0] || !best[1] {
+		t.Fatalf("expected both rows flagged BestFit on a tie, got %v", best)
+	}
+}
+
+func TestRankBestSlots_TieBreakFewestNo(t *testing.T) {
+	rows := []resultsRow{{YesCount: 2, NoCount: 1}, {YesCount: 2, NoCount: 0}}
+	best := rankBestSlots(rows)
+	if best[0] || !best[1] {
+		t.Fatalf("expected only row 1 (fewest No) flagged BestFit, got %v", best)
+	}
+}
+
+func TestRankBestSlots_MaybeIrrelevant(t *testing.T) {
+	rows := []resultsRow{{YesCount: 1, NoCount: 0, MaybeCount: 3}, {YesCount: 1, NoCount: 0, MaybeCount: 0}}
+	best := rankBestSlots(rows)
+	if !best[0] || !best[1] {
+		t.Fatalf("expected both rows flagged BestFit regardless of Maybe count, got %v", best)
+	}
+}
+
+func TestRankBestSlots_ZeroResponses(t *testing.T) {
+	rows := []resultsRow{{}, {}}
+	best := rankBestSlots(rows)
+	if len(best) != 0 {
+		t.Fatalf("expected no rows flagged BestFit at zero responses, got %v", best)
+	}
+}
+
+func TestResultsView_MissingCell(t *testing.T) {
+	slots := []store.Slot{{ID: 1}, {ID: 2}}
+	participants := []store.Participant{{ID: 10, DisplayName: "Alice"}}
+	answers := map[int64]map[int64]string{10: {1: "yes"}}
+
+	view := buildResultsGridView("all_day", slots, participants, answers)
+
+	if view.Rows[1].Cells[0].Answer != "" {
+		t.Fatalf("expected empty Answer for a missing cell, got %q", view.Rows[1].Cells[0].Answer)
+	}
+}
+
+func TestResultsView_ZeroParticipants_HasResponsesFalse(t *testing.T) {
+	slots := []store.Slot{{ID: 1}}
+
+	view := buildResultsGridView("all_day", slots, nil, nil)
+
+	if view.HasResponses {
+		t.Fatal("expected HasResponses false with zero participants")
+	}
+	if len(view.Rows[0].Cells) != 0 {
+		t.Fatalf("expected zero cells per row with zero participants, got %d", len(view.Rows[0].Cells))
+	}
+}
+
+func TestResults_Grid_EndToEnd(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Grid Poll", "ptok-grid", "atok-grid", 2)
+
+	postAnswer := func(name, slot0Answer, slot1Answer string) {
+		form := url.Values{}
+		form.Set("display_name", name)
+		form.Set(fmt.Sprintf("answer_%d", slots[0].ID), slot0Answer)
+		form.Set(fmt.Sprintf("answer_%d", slots[1].ID), slot1Answer)
+		resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+		if err != nil {
+			t.Fatalf("POST responses (%s) error: %v", name, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 303 for %s, got %d; body: %s", name, resp.StatusCode, body)
+		}
+	}
+
+	postAnswer("Alice", "yes", "no")
+	postAnswer("Bob", "yes", "maybe")
+
+	getResp, err := http.Get(ts.URL + "/poll/" + poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("GET vote page error: %v", err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getResp.StatusCode)
+	}
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "Alice") || !strings.Contains(bodyStr, "Bob") {
+		t.Fatalf("expected both participant names in the results grid, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "✓") { // ✓
+		t.Fatalf("expected the Yes badge glyph in the results grid, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "2 Yes · 0 No · 0 Maybe") { // "2 Yes · 0 No · 0 Maybe"
+		t.Fatalf("expected slot-0 tally '2 Yes · 0 No · 0 Maybe' in the results grid, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "Best fit") {
+		t.Fatalf("expected a Best fit badge in the results grid, got: %s", bodyStr)
+	}
+}
+
+func TestResults_AdminRouteParity(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Admin Parity Poll", "ptok-admin-parity", "atok-admin-parity", 2)
+
+	postAnswer := func(name, slot0Answer, slot1Answer string) {
+		form := url.Values{}
+		form.Set("display_name", name)
+		form.Set(fmt.Sprintf("answer_%d", slots[0].ID), slot0Answer)
+		form.Set(fmt.Sprintf("answer_%d", slots[1].ID), slot1Answer)
+		resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+		if err != nil {
+			t.Fatalf("POST responses (%s) error: %v", name, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 303 for %s, got %d; body: %s", name, resp.StatusCode, body)
+		}
+	}
+
+	postAnswer("Alice", "yes", "no")
+	postAnswer("Bob", "yes", "maybe")
+
+	adminPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+	getResp, err := http.Get(ts.URL + adminPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", adminPath, err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getResp.StatusCode)
+	}
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "Alice") || !strings.Contains(bodyStr, "Bob") {
+		t.Fatalf("expected both participant names in the admin route's results grid, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "✓") {
+		t.Fatalf("expected the Yes badge glyph in the admin route's results grid, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "2 Yes · 0 No · 0 Maybe") {
+		t.Fatalf("expected slot-0 tally '2 Yes · 0 No · 0 Maybe' in the admin route's results grid, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "Best fit") {
+		t.Fatalf("expected a Best fit badge in the admin route's results grid, got: %s", bodyStr)
+	}
+	// The admin token legitimately appears earlier in the body (the admin
+	// link box itself). Scope the no-leak check to the results grid markup
+	// only, per T-03-02: the grid must expose no data beyond what the
+	// participant route shows.
+	gridIdx := strings.Index(bodyStr, `class="results-section"`)
+	if gridIdx == -1 {
+		t.Fatalf("expected a results-section in the admin body, got: %s", bodyStr)
+	}
+	gridStr := bodyStr[gridIdx:]
+	if strings.Contains(gridStr, poll.AdminToken) {
+		t.Fatalf("admin token leaked into the results grid markup itself, got: %s", gridStr)
+	}
+}
+
 func TestCreatePoll_OversizedBody_RejectedWithoutPanic(t *testing.T) {
 	ts, st := newTestServer(t)
 
