@@ -3,42 +3,54 @@
 ## Milestones
 
 - ✅ **v1.0** — Date Chooser MVP (poll creation, voting, results grid, admin management) — shipped 2026-08-25. See `.planning/milestones/v1.0-ROADMAP.md`.
+- ✅ **v1.1** — Poll-Creation Slot UX Improvements (SLOT-01..05) — shipped 2026-08-27.
 
-## Current Milestone: v1.1 — Poll-Creation Slot UX Improvements
+## Current Milestone: v1.2 — Slot Import/Export & Instance Admin Page
 
-Make creating a multi-slot poll faster and less error-prone: fix the time-picker's visual sizing, make the whole time field clickable (not just the icon), auto-fill end-time from start-time, add a per-slot "Copy" button, and reject exact-duplicate slots on submit.
+Two independent features: (1) export/import a poll's slots as a plain-text file so populating or cloning a poll doesn't mean re-entering every date/time by hand, and (2) a site-wide `/admin` page listing every poll (with its links), gated by a secret only retrievable via direct `sqlite3` access to the database file — a fallback for when an organizer loses a poll's individual links.
 
-- [x] **Phase 5: Slot Picker UX Improvements** — Fixes and additions to the poll-creation form's slot inputs (Not started) (completed 2026-08-27)
+- [ ] **Phase 6: Slot Import/Export** — Export/import a poll's slots as a `.txt` file (Not started)
+- [ ] **Phase 7: Instance Admin Page** — Secret-gated `/admin` page listing all polls (Not started)
 
 ## Phase Details
 
-### Phase 5: Slot Picker UX Improvements
+### Phase 6: Slot Import/Export
 
-**Goal**: An organizer creating a poll can pick times more easily (consistent-height controls, click-anywhere popup, auto-filled end time), duplicate a slot with one click instead of re-entering it, and gets a clear error instead of a silently-accepted duplicate slot.
-**Depends on**: Phase 1 (extends the existing poll-creation form)
-**Requirements**: SLOT-01, SLOT-02, SLOT-03, SLOT-04, SLOT-05
+**Goal**: An organizer can export a poll's current slots to a text file and re-import that same format (on this poll or a new one) to populate the slot list, instead of re-entering every date/time by hand.
+**Depends on**: Phase 1 (extends the existing create/edit forms)
+**Requirements**: IMPORT-01, IMPORT-02, IMPORT-03
 **Success Criteria** (what must be TRUE):
 
-  1. The time-picker input, its dropdown-toggle button, and its +/-15 buttons are all the same visual height
-  2. Clicking anywhere on a time input (not just the clock icon) opens the hour-dropdown popup
-  3. Picking a start time on a specific-time slot auto-fills that row's end time to 1 hour later; the organizer can still edit it afterward
-  4. A "Copy" button on each slot row appends a new row pre-filled with that row's current values
-  5. Submitting a poll containing two exact-duplicate slots (same date for all-day; same date+start+end for specific-time) is rejected with an inline error identifying the duplicate, not silently saved or partially saved
+  1. Clicking "Export slots" downloads a `.txt` file with one line per current slot, in the documented format
+  2. Choosing a `.txt` file via "Import slots" replaces the form's current slot rows with the parsed contents, ready to review and submit
+  3. A file with some unparsable lines still imports the valid lines and shows a visible skipped-line count — it never silently drops lines or blocks the whole import
 
-**Plans:** 2/2 plans complete
+**Plans:** 0/? plans complete
 
-Plans:
+**UI hint**: yes
 
-- [x] 05-01-PLAN.md — Client-side slot-picker UX: time-field height (SLOT-01), click-anywhere popup (SLOT-02), auto-fill end time (SLOT-03), per-row Copy button (SLOT-04)
-- [x] 05-02-PLAN.md — Server-side exact-duplicate-slot rejection (SLOT-05)
+### Phase 7: Instance Admin Page
+
+**Goal**: An organizer who loses a poll's individual links can recover them from a single site-wide page, without that page being reachable by anyone who doesn't have direct file access to the server's SQLite database.
+**Depends on**: Phase 1 (lists polls created via the existing poll-creation flow)
+**Requirements**: ADMIN-01, ADMIN-02, ADMIN-03, ADMIN-04
+**Success Criteria** (what must be TRUE):
+
+  1. On a fresh database, the instance-admin secret is auto-generated on first server startup and persisted in a `settings` table
+  2. `/admin` is unreachable without first submitting the correct secret at `/admin/login`; a valid submission sets a session-only cookie
+  3. Once logged in, `/admin` lists every poll's title, created date, participant link, and admin link
+  4. The README documents the exact `sqlite3` command to read the secret out of the database file
+
+**Plans:** 0/? plans complete
 
 **UI hint**: yes
 
 ## Progress
 
 **Execution Order:**
-Phases execute in numeric order: 5
+Phases execute in numeric order: 6, 7
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 5. Slot Picker UX Improvements | 2/2 | Complete    | 2026-08-27 |
+| 6. Slot Import/Export | 0/? | Not started | - |
+| 7. Instance Admin Page | 0/? | Not started | - |

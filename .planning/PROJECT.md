@@ -8,7 +8,9 @@
 
 ## Next Milestone Goals
 
-No milestone is currently active. Run `/gsd-new-milestone` when ready to scope the next one.
+**v1.2 — Slot Import/Export & Instance Admin Page** (in progress, started 2026-08-27):
+- Export/import a poll's slots as a plain-text `.txt` file (one line per slot) so populating or cloning a poll doesn't require re-entering every date/time by hand.
+- A site-wide `/admin` page listing every poll (title, created date, both links) as a fallback for a lost poll link — gated by a secret stored only in the SQLite database, retrievable only via direct `sqlite3` file access, never exposed through the web UI itself.
 
 ## Deferred (v2 candidates, not in this milestone)
 
@@ -46,7 +48,8 @@ An organizer can create a poll of date/time options and get back, without any si
 
 ### Active
 
-(None — v1.1 shipped and validated.)
+- Organizer can export a poll's slots to a text file and re-import that format to populate a slot list — Phase 6 (in progress)
+- Organizer can recover lost poll links from a secret-gated, site-wide `/admin` page — Phase 7 (in progress)
 
 ### Out of Scope
 
@@ -108,4 +111,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-27 after Phase 5 (v1.1 complete)*
+*Last updated: 2026-08-27 — v1.2 scoped (Phase 6: Slot Import/Export, Phase 7: Instance Admin Page)*

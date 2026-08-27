@@ -1,39 +1,49 @@
-# Requirements: Date Chooser — Milestone v1.1
+# Requirements: Date Chooser — Milestone v1.2
 
 **Defined:** 2026-08-27
-**Core Value:** Make creating a multi-slot poll faster and less error-prone.
+**Core Value:** Make it faster to populate/clone polls, and give the organizer a way to recover poll links without losing them.
 
-## v1.1 Requirements
+## v1.2 Requirements
 
-### Slot Picker UX
+### Slot Import/Export
 
-- [x] **SLOT-01**: The time-picker input's visual height matches the +/-15 and dropdown-toggle buttons beside it (currently mismatched)
-- [x] **SLOT-02**: Clicking anywhere on a time input (not just the small clock icon) opens the hour-dropdown popup
-- [x] **SLOT-03**: When the organizer picks a start time on a specific-time slot, the end time auto-fills to exactly 1 hour later (organizer can still edit it manually)
-- [x] **SLOT-04**: Each slot row has a "Copy" button that duplicates that slot's current values (date/time or date, depending on mode) into a new row appended to the list
-- [x] **SLOT-05**: Submitting a poll with two exact-duplicate slots is rejected server-side with an inline error identifying the duplicate row(s) — no partial/silent save. "Exact duplicate" = same date for all-day slots; same date + start time + end time for specific-time slots
+- [ ] **IMPORT-01**: An "Export slots" control on the create/edit page downloads the current slot list as a `.txt` file, one line per slot: `YYYY-MM-DD,HH:MM,HH:MM` for specific-time polls, `YYYY-MM-DD` for all-day polls
+- [ ] **IMPORT-02**: An "Import slots" control on the create/edit page reads a `.txt` file in that same format (client-side) and replaces the current slot rows in the form — the organizer reviews the populated form and submits normally; no server round-trip for the import step itself
+- [ ] **IMPORT-03**: Lines that don't parse as a valid slot are skipped with a visible count (e.g. "2 of 8 lines could not be read and were skipped") rather than blocking the whole import or failing silently
+
+### Instance Admin Page
+
+- [ ] **ADMIN-01**: A new `settings` table stores a single instance-admin secret (crypto/rand token), auto-generated on first server startup if not already present
+- [ ] **ADMIN-02**: A `/admin/login` page accepts the secret via a form; on success it sets a session-only cookie (no `Max-Age`/`Expires` — cleared when the browser session ends) authorizing access to `/admin`
+- [ ] **ADMIN-03**: `/admin` (unreachable without a valid session cookie) lists every poll: title, created date, participant link, admin link — read-only, no delete/edit actions from this page
+- [ ] **ADMIN-04**: README documents the exact `sqlite3` command to retrieve the secret directly from the database file
 
 ## Out of Scope
 
 | Feature | Reason |
 |---------|--------|
-| Fuzzy/overlap duplicate detection (partial time overlap) | User explicitly chose exact-match only; overlapping-but-distinct slots are a legitimate use case (e.g. two candidate windows on the same day) |
-| Editing an existing live poll's slots to use this same duplicate/copy UX | Out of scope — this milestone targets the poll-creation form only; Phase 4's edit form is a separate template not touched here unless a shared component naturally carries the fix |
+| Deleting/editing polls from the instance-admin page | Explicitly scoped read-only — recovering a lost link is the goal; destructive/edit actions already exist via each poll's own admin link |
+| Rate-limiting or lockout on `/admin/login` | The secret is a long random token (same threat model as the existing per-poll admin token, which also has no rate limiting) — brute force is infeasible regardless |
+| Rotating/resetting the secret through the web UI | Explicitly requested to be sqlite3-only; keeps the attack surface for the secret itself at zero HTTP exposure |
+| Live-synced textbox for import (types-as-you-go) | User chose file-based import/export over a live-editable textbox — simpler, matches this app's low-JS-complexity pattern |
+| Merging imported slots with existing ones | User chose replace-whole-list semantics — simpler mental model, avoids accidental duplicates |
 
 ## Traceability
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SLOT-01 | Phase 5 | Complete |
-| SLOT-02 | Phase 5 | Complete |
-| SLOT-03 | Phase 5 | Complete |
-| SLOT-04 | Phase 5 | Complete |
-| SLOT-05 | Phase 5 | Complete |
+| IMPORT-01 | Phase 6 | Pending |
+| IMPORT-02 | Phase 6 | Pending |
+| IMPORT-03 | Phase 6 | Pending |
+| ADMIN-01 | Phase 7 | Pending |
+| ADMIN-02 | Phase 7 | Pending |
+| ADMIN-03 | Phase 7 | Pending |
+| ADMIN-04 | Phase 7 | Pending |
 
 **Coverage:**
 
-- v1.1 requirements: 5 total
-- Mapped to phases: 5
+- v1.2 requirements: 7 total
+- Mapped to phases: 7
 - Unmapped: 0 ✓
 
 ---
