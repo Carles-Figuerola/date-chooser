@@ -177,6 +177,8 @@
   }
 
   function wireRow(row) {
+    window.DateChooserSlotFields.wireRow(row);
+
     var removeBtn = row.querySelector("[data-remove-slot]");
     var undoBtn = row.querySelector("[data-undo-slot]");
 

@@ -34,14 +34,15 @@ func TestSlotUX_TimeFieldHeight(t *testing.T) {
 	}
 }
 
-// TestSlotUX_ClickAnywhereOpensDropdown proves create.js wires a click
-// listener on the time input itself that opens the same dropdown the ▾
-// toggle opens, and that the handler stops propagation so the document-level
-// closeAllTimeDropdowns listener doesn't instantly re-close it (SLOT-02).
+// TestSlotUX_ClickAnywhereOpensDropdown proves slot-time-fields.js (shared
+// by create.js and edit.js) wires a click listener on the time input itself
+// that opens the same dropdown the ▾ toggle opens, and that the handler
+// stops propagation so the document-level closeAllTimeDropdowns listener
+// doesn't instantly re-close it (SLOT-02).
 func TestSlotUX_ClickAnywhereOpensDropdown(t *testing.T) {
-	data, err := os.ReadFile("static/create.js")
+	data, err := os.ReadFile("static/slot-time-fields.js")
 	if err != nil {
-		t.Fatalf("reading static/create.js: %v", err)
+		t.Fatalf("reading static/slot-time-fields.js: %v", err)
 	}
 	content := string(data)
 
@@ -63,19 +64,19 @@ func TestSlotUX_ClickAnywhereOpensDropdown(t *testing.T) {
 // the start-time input that fills an empty end time with start+1h and never
 // clobbers a non-empty end time (SLOT-03).
 func TestSlotUX_AutoFillEndTime(t *testing.T) {
-	data, err := os.ReadFile("static/create.js")
+	data, err := os.ReadFile("static/slot-time-fields.js")
 	if err != nil {
-		t.Fatalf("reading static/create.js: %v", err)
+		t.Fatalf("reading static/slot-time-fields.js: %v", err)
 	}
 	content := string(data)
 
 	if !strings.Contains(content, "slot_start_time") || !strings.Contains(content, `addEventListener("change"`) {
-		t.Fatalf("expected create.js to bind a change listener referencing slot_start_time, got no match")
+		t.Fatalf("expected slot-time-fields.js to bind a change listener referencing slot_start_time, got no match")
 	}
 
 	startIdx := strings.Index(content, `startInput.addEventListener("change"`)
 	if startIdx == -1 {
-		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in create.js")
+		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in slot-time-fields.js")
 	}
 	handlerRegion := content[startIdx:]
 	if len(handlerRegion) > 1200 {
@@ -100,19 +101,19 @@ func TestSlotUX_AutoFillEndTime(t *testing.T) {
 // already populated (e.g. right after Copy), changing the start time shifts
 // the end time by the previous duration instead of leaving it stale.
 func TestSlotUX_PreserveDurationOnStartEdit(t *testing.T) {
-	data, err := os.ReadFile("static/create.js")
+	data, err := os.ReadFile("static/slot-time-fields.js")
 	if err != nil {
-		t.Fatalf("reading static/create.js: %v", err)
+		t.Fatalf("reading static/slot-time-fields.js: %v", err)
 	}
 	content := string(data)
 
 	if !strings.Contains(content, "previousStartValue") {
-		t.Fatalf("expected create.js to track a previousStartValue for the start-time change handler, got no match")
+		t.Fatalf("expected slot-time-fields.js to track a previousStartValue for the start-time change handler, got no match")
 	}
 
 	startIdx := strings.Index(content, `startInput.addEventListener("change"`)
 	if startIdx == -1 {
-		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in create.js")
+		t.Fatalf("expected a startInput.addEventListener(\"change\", ...) listener in slot-time-fields.js")
 	}
 	handlerRegion := content[startIdx:]
 	if len(handlerRegion) > 1600 {
@@ -126,6 +127,40 @@ func TestSlotUX_PreserveDurationOnStartEdit(t *testing.T) {
 	assignIdx := strings.LastIndex(handlerRegion, "endInput.value =")
 	if durationIdx == -1 || assignIdx == -1 || durationIdx >= assignIdx {
 		t.Fatalf("expected a duration computed from the previous start/end before the final endInput.value assignment, got: %s", handlerRegion)
+	}
+}
+
+// TestSlotUX_EditPageSharesTimeFieldWiring proves edit.html loads the same
+// slot-time-fields.js module as create.html and carries the same
+// data-time-field/data-date-input markup, so the click-anywhere dropdown,
+// ±15 steppers, and start/end duration-preserving behavior aren't limited to
+// the create-poll page (a real gap: Phase 5/v1.1 only touched create.html).
+func TestSlotUX_EditPageSharesTimeFieldWiring(t *testing.T) {
+	html, err := os.ReadFile("templates/edit.html")
+	if err != nil {
+		t.Fatalf("reading templates/edit.html: %v", err)
+	}
+	htmlContent := string(html)
+
+	if !strings.Contains(htmlContent, `src="/static/slot-time-fields.js"`) {
+		t.Fatalf("expected edit.html to load /static/slot-time-fields.js, got no match")
+	}
+	if !strings.Contains(htmlContent, "data-time-field") {
+		t.Fatalf("expected edit.html to carry data-time-field markup, got no match")
+	}
+	if !strings.Contains(htmlContent, "data-date-input") {
+		t.Fatalf("expected edit.html to carry data-date-input markup, got no match")
+	}
+	if strings.Count(htmlContent, "data-time-field") < 4 {
+		t.Fatalf("expected data-time-field to appear at least 4 times (server-rendered row + 2 templates, 2 fields each), got %d", strings.Count(htmlContent, "data-time-field"))
+	}
+
+	js, err := os.ReadFile("static/edit.js")
+	if err != nil {
+		t.Fatalf("reading static/edit.js: %v", err)
+	}
+	if !strings.Contains(string(js), "window.DateChooserSlotFields.wireRow(row)") {
+		t.Fatalf("expected edit.js's wireRow to call window.DateChooserSlotFields.wireRow(row), got no match")
 	}
 }
 
