@@ -1,0 +1,31 @@
+{{define "content"}}
+<div class="card">
+  <h1 class="display">All polls</h1>
+  <p class="body">{{if eq (len .Polls) 1}}1 poll{{else}}{{len .Polls}} polls{{end}} on this server.</p>
+
+  {{if not .Polls}}
+  <p class="body">No polls yet.</p>
+  {{else}}
+  <table class="admin-poll-table">
+    <thead>
+      <tr>
+        <th>Title</th>
+        <th>Created</th>
+        <th>Participant link</th>
+        <th>Admin link</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{range .Polls}}
+      <tr>
+        <td>{{.Title}}</td>
+        <td>{{.CreatedDisplay}}</td>
+        <td><a class="link-text" href="{{.ParticipantPath}}">{{.ParticipantURL}}</a></td>
+        <td><a class="link-text" href="{{.AdminPath}}">{{.AdminURL}}</a></td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+  {{end}}
+</div>
+{{end}}

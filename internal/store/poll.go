@@ -140,3 +140,31 @@ func (s *Store) PollByTokens(ctx context.Context, participantToken, adminToken s
 
 	return &p, slots, nil
 }
+
+// ListPolls returns every poll, newest first, for the instance-admin page
+// (ADMIN-03). It never scopes by token — callers must gate access to this
+// data themselves (the instance-admin secret/session, not a poll token).
+func (s *Store) ListPolls(ctx context.Context) ([]Poll, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, participant_token, admin_token, title, description, organizer_name, poll_type, created_at
+		FROM polls
+		ORDER BY created_at DESC, id DESC
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("store: querying polls: %w", err)
+	}
+	defer rows.Close()
+
+	var polls []Poll
+	for rows.Next() {
+		var p Poll
+		if err := rows.Scan(&p.ID, &p.ParticipantToken, &p.AdminToken, &p.Title, &p.Description, &p.OrganizerName, &p.PollType, &p.CreatedAt); err != nil {
+			return nil, fmt.Errorf("store: scanning poll: %w", err)
+		}
+		polls = append(polls, p)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("store: iterating polls: %w", err)
+	}
+	return polls, nil
+}

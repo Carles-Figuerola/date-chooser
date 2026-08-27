@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"crypto/subtle"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -71,6 +72,26 @@ const participantCookieName = "dc_participant"
 // change your vote" requirement.
 const participantCookieMaxAge = 365 * 24 * 60 * 60
 
+// instanceAdminCookieName is the session-only (no MaxAge/Expires) cookie
+// authorizing access to /admin, set after a correct secret is submitted at
+// /admin/login (ADMIN-02). Its value is the secret itself — a bearer-token
+// pattern, matching how participant/poll-admin tokens already work in this
+// app — so no server-side session store is needed.
+const instanceAdminCookieName = "dc_instance_admin"
+
+// instanceAdminSessionMaxAge is how long a session created at
+// /admin/login remains valid, checked against the admin_sessions row's
+// created_at at auth time — not enforced via the cookie's own expiry (the
+// cookie carries no MaxAge/Expires; the browser may keep it around longer,
+// in which case the request is simply treated as unauthenticated once the
+// session has aged out).
+const instanceAdminSessionMaxAge = 24 * time.Hour
+
+// instanceAdminLoginErrorCopy is shown on an incorrect secret submission at
+// /admin/login. Deliberately generic — it never reveals whether the
+// database has a secret at all.
+const instanceAdminLoginErrorCopy = "Incorrect secret."
+
 // createFormView is the data passed to create.html for both the initial GET
 // render and any validation-failure re-render (HTTP 200, values preserved).
 type createFormView struct {
@@ -105,18 +126,23 @@ func newCreateFormView() createFormView {
 
 // Server holds the dependencies needed to serve Date Chooser's HTTP routes.
 type Server struct {
-	store *store.Store
-	tmpl  *pageTemplates
+	store               *store.Store
+	tmpl                *pageTemplates
+	instanceAdminSecret string
+	dbPath              string
 }
 
 // NewServer constructs a Server backed by the given store, parsing the
-// embedded templates once.
-func NewServer(st *store.Store) (*Server, error) {
+// embedded templates once. instanceAdminSecret gates /admin (ADMIN-02) and
+// dbPath is shown (path only, never the secret's value) on the /admin/login
+// page's "forgotten the secret?" disclosure (ADMIN-05), so the sqlite3
+// command shown there matches this exact deployment's database file.
+func NewServer(st *store.Store, instanceAdminSecret, dbPath string) (*Server, error) {
 	tmpl, err := parseTemplates()
 	if err != nil {
 		return nil, fmt.Errorf("web: parsing templates: %w", err)
 	}
-	return &Server{store: st, tmpl: tmpl}, nil
+	return &Server{store: st, tmpl: tmpl, instanceAdminSecret: instanceAdminSecret, dbPath: dbPath}, nil
 }
 
 // Routes builds the HTTP handler for all Date Chooser routes.
@@ -133,6 +159,9 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /poll/{ptoken}", s.handleVoteForm)
 	mux.HandleFunc("POST /poll/{ptoken}/responses", s.handleSubmitResponse)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /admin/login", s.handleInstanceAdminLoginForm)
+	mux.HandleFunc("POST /admin/login", s.handleInstanceAdminLogin)
+	mux.HandleFunc("GET /admin", s.handleInstanceAdminPage)
 
 	staticSub, err := fs.Sub(staticFS, "static")
 	if err != nil {
@@ -1253,4 +1282,138 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+// isInstanceAdminSession reports whether the request carries a session
+// cookie naming a valid (not expired, per instanceAdminSessionMaxAge)
+// admin_sessions row. The session token itself is a fresh crypto/rand value
+// per login — not the instance-admin secret — so this DB lookup is real
+// authentication, not just a cookie-presence check. A store error fails
+// closed (treated as unauthenticated).
+func (s *Server) isInstanceAdminSession(r *http.Request) bool {
+	cookie, err := r.Cookie(instanceAdminCookieName)
+	if err != nil {
+		return false
+	}
+	valid, err := s.store.InstanceAdminSessionValid(r.Context(), cookie.Value, instanceAdminSessionMaxAge)
+	if err != nil {
+		return false
+	}
+	return valid
+}
+
+func (s *Server) renderInstanceAdminLoginForm(w http.ResponseWriter, bannerError string) {
+	data := struct {
+		BannerError string
+		DBPath      string
+	}{BannerError: bannerError, DBPath: s.dbPath}
+	if err := s.tmpl.adminLogin.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleInstanceAdminLoginForm(w http.ResponseWriter, r *http.Request) {
+	_ = s.store.PruneInstanceAdminSessions(r.Context(), instanceAdminSessionMaxAge)
+	if s.isInstanceAdminSession(r) {
+		http.Redirect(w, r, "/admin", http.StatusSeeOther)
+		return
+	}
+	s.renderInstanceAdminLoginForm(w, "")
+}
+
+// handleInstanceAdminLogin verifies the submitted secret in constant time
+// and, on success, creates a fresh session row (a new crypto/rand token,
+// distinct from the instance-admin secret and from any other session) and
+// sets a session-only cookie (no MaxAge/Expires) naming it. That cookie is
+// only actually honored for instanceAdminSessionMaxAge (24h) from creation
+// — checked at auth time in isInstanceAdminSession, regardless of whether
+// the browser keeps the cookie around longer (ADMIN-02).
+func (s *Server) handleInstanceAdminLogin(w http.ResponseWriter, r *http.Request) {
+	_ = s.store.PruneInstanceAdminSessions(r.Context(), instanceAdminSessionMaxAge)
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+
+	secret := r.PostFormValue("secret")
+	if subtle.ConstantTimeCompare([]byte(secret), []byte(s.instanceAdminSecret)) != 1 {
+		s.renderInstanceAdminLoginForm(w, instanceAdminLoginErrorCopy)
+		return
+	}
+
+	sessionToken, err := token.New()
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := s.store.CreateInstanceAdminSession(r.Context(), sessionToken); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:     instanceAdminCookieName,
+		Value:    sessionToken,
+		Path:     "/admin",
+		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   requestIsHTTPS(r),
+	})
+	http.Redirect(w, r, "/admin", http.StatusSeeOther)
+}
+
+// instanceAdminPollRow is one row of the /admin poll list (ADMIN-03).
+type instanceAdminPollRow struct {
+	Title           string
+	CreatedDisplay  string
+	ParticipantPath string
+	ParticipantURL  string
+	AdminPath       string
+	AdminURL        string
+}
+
+func (s *Server) handleInstanceAdminPage(w http.ResponseWriter, r *http.Request) {
+	_ = s.store.PruneInstanceAdminSessions(r.Context(), instanceAdminSessionMaxAge)
+	if !s.isInstanceAdminSession(r) {
+		http.Redirect(w, r, "/admin/login", http.StatusSeeOther)
+		return
+	}
+
+	polls, err := s.store.ListPolls(r.Context())
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	scheme := "http"
+	if requestIsHTTPS(r) {
+		scheme = "https"
+	}
+
+	rows := make([]instanceAdminPollRow, len(polls))
+	for i, p := range polls {
+		participantPath := "/poll/" + p.ParticipantToken
+		adminPath := "/poll/" + p.ParticipantToken + "/admin/" + p.AdminToken
+		created := p.CreatedAt
+		if t, err := time.Parse(time.RFC3339, p.CreatedAt); err == nil {
+			created = t.Format("Mon, Jan 2, 2006")
+		}
+		rows[i] = instanceAdminPollRow{
+			Title:           p.Title,
+			CreatedDisplay:  created,
+			ParticipantPath: participantPath,
+			ParticipantURL:  scheme + "://" + r.Host + participantPath,
+			AdminPath:       adminPath,
+			AdminURL:        scheme + "://" + r.Host + adminPath,
+		}
+	}
+
+	data := struct {
+		Polls []instanceAdminPollRow
+	}{Polls: rows}
+	if err := s.tmpl.admin.ExecuteTemplate(w, "layout", data); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
 }

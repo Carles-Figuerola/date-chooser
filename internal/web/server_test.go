@@ -18,6 +18,11 @@ import (
 	"github.com/cfiguerola/date-chooser/internal/store"
 )
 
+// testInstanceAdminSecret is the fixed instance-admin secret used across
+// every test server — tests that exercise /admin/login submit this exact
+// value rather than reading it back out of the database.
+const testInstanceAdminSecret = "test-instance-admin-secret"
+
 func newTestServer(t *testing.T) (*httptest.Server, *store.Store) {
 	t.Helper()
 	dbPath := filepath.Join(t.TempDir(), "test.db")
@@ -27,7 +32,11 @@ func newTestServer(t *testing.T) (*httptest.Server, *store.Store) {
 	}
 	t.Cleanup(func() { st.Close() })
 
-	srv, err := NewServer(st)
+	if _, err := st.EnsureInstanceAdminSecret(context.Background(), testInstanceAdminSecret); err != nil {
+		t.Fatalf("EnsureInstanceAdminSecret() error: %v", err)
+	}
+
+	srv, err := NewServer(st, testInstanceAdminSecret, dbPath)
 	if err != nil {
 		t.Fatalf("NewServer() error: %v", err)
 	}
