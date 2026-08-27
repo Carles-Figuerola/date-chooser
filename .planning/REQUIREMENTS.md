@@ -17,6 +17,7 @@
 - [ ] **ADMIN-02**: A `/admin/login` page accepts the secret via a form; on success it sets a session-only cookie (no `Max-Age`/`Expires` — cleared when the browser session ends) authorizing access to `/admin`
 - [ ] **ADMIN-03**: `/admin` (unreachable without a valid session cookie) lists every poll: title, created date, participant link, admin link — read-only, no delete/edit actions from this page
 - [ ] **ADMIN-04**: README documents the exact `sqlite3` command to retrieve the secret directly from the database file
+- [ ] **ADMIN-05**: The `/admin/login` page itself shows the same `sqlite3` retrieval command (in a collapsed `<details>` disclosure, not always-visible) — the command/DB path aren't secret, only the value it returns is, so showing it there isn't a leak, and it saves a trip to the README for someone who's forgotten it
 
 ## Out of Scope
 
@@ -39,11 +40,12 @@
 | ADMIN-02 | Phase 7 | Pending |
 | ADMIN-03 | Phase 7 | Pending |
 | ADMIN-04 | Phase 7 | Pending |
+| ADMIN-05 | Phase 7 | Pending |
 
 **Coverage:**
 
-- v1.2 requirements: 7 total
-- Mapped to phases: 7
+- v1.2 requirements: 8 total
+- Mapped to phases: 8
 - Unmapped: 0 ✓
 
 ---
