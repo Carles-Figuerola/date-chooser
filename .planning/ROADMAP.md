@@ -16,8 +16,8 @@ Two independent features: (1) export/import a poll's slots as a plain-text file 
 
 ### Phase 6: Slot Import/Export
 
-**Goal**: An organizer can export a poll's current slots to a text file and re-import that same format (on this poll or a new one) to populate the slot list, instead of re-entering every date/time by hand.
-**Depends on**: Phase 1 (extends the existing create/edit forms)
+**Goal**: An organizer can export a poll's current slots to a text file and re-import that same format on the create page (e.g. for a new, similar poll) to populate the slot list, instead of re-entering every date/time by hand.
+**Depends on**: Phase 1 (extends the existing create form)
 **Requirements**: IMPORT-01, IMPORT-02, IMPORT-03
 **Success Criteria** (what must be TRUE):
 

@@ -7,8 +7,8 @@
 
 ### Slot Import/Export
 
-- [ ] **IMPORT-01**: An "Export slots" control on the create/edit page downloads the current slot list as a `.txt` file, one line per slot: `YYYY-MM-DD,HH:MM,HH:MM` for specific-time polls, `YYYY-MM-DD` for all-day polls
-- [ ] **IMPORT-02**: An "Import slots" control on the create/edit page reads a `.txt` file in that same format (client-side) and replaces the current slot rows in the form — the organizer reviews the populated form and submits normally; no server round-trip for the import step itself
+- [ ] **IMPORT-01**: An "Export slots" control on the create page downloads the current slot list as a `.txt` file, one line per slot: `YYYY-MM-DD,HH:MM,HH:MM` for specific-time polls, `YYYY-MM-DD` for all-day polls
+- [ ] **IMPORT-02**: An "Import slots" control on the create page reads a `.txt` file in that same format (client-side) and replaces the current slot rows in the form — the organizer reviews the populated form and submits normally; no server round-trip for the import step itself. Create page only — explicitly not on the edit page
 - [ ] **IMPORT-03**: Lines that don't parse as a valid slot are skipped with a visible count (e.g. "2 of 8 lines could not be read and were skipped") rather than blocking the whole import or failing silently
 
 ### Instance Admin Page
@@ -28,6 +28,7 @@
 | Rotating/resetting the secret through the web UI | Explicitly requested to be sqlite3-only; keeps the attack surface for the secret itself at zero HTTP exposure |
 | Live-synced textbox for import (types-as-you-go) | User chose file-based import/export over a live-editable textbox — simpler, matches this app's low-JS-complexity pattern |
 | Merging imported slots with existing ones | User chose replace-whole-list semantics — simpler mental model, avoids accidental duplicates |
+| Import/Export on the edit page | User explicitly asked for create-page only, after seeing the initial (broader) scope |
 
 ## Traceability
 
