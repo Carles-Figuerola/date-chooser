@@ -13,6 +13,10 @@
 
   var slotsList = document.getElementById("slots-list");
   var addBtn = document.getElementById("add-slot-btn");
+  var exportBtn = document.getElementById("export-slots-btn");
+  var importBtn = document.getElementById("import-slots-btn");
+  var importFile = document.getElementById("import-slots-file");
+  var importMessage = document.getElementById("import-slots-message");
   var counter = document.getElementById("slot-counter");
   var hint = document.getElementById("slot-hint");
   var submitBtn = document.getElementById("submit-btn");
@@ -36,6 +40,14 @@
 
   function rows() {
     return Array.prototype.slice.call(slotsList.querySelectorAll("[data-slot-row]"));
+  }
+
+  function rowValues(row) {
+    var get = function (name) {
+      var input = row.querySelector('[name="' + name + '"]');
+      return input ? input.value : "";
+    };
+    return { date: get("slot_date"), start: get("slot_start_time"), end: get("slot_end_time") };
   }
 
   function wireRow(row) {
@@ -157,6 +169,83 @@
         });
         rebuildRowsForMode(evt.target.value);
       }
+    });
+  }
+
+  // IMPORT-01: Export dumps every current row as plain text (one line per
+  // slot) and triggers a browser download — no server round-trip.
+  if (exportBtn) {
+    exportBtn.addEventListener("click", function () {
+      var mode = currentMode();
+      var slots = rows().map(rowValues);
+      var text = window.DateChooserSlotFields.slotsToText(mode, slots);
+      var blob = new Blob([text], { type: "text/plain" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "slots.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  }
+
+  // IMPORT-02/03: Import reads the chosen file, parses it against the
+  // current mode, and REPLACES every current row with the parsed result —
+  // never a partial/merged apply. Unparsable lines are skipped and counted
+  // rather than blocking the whole import.
+  if (importBtn && importFile) {
+    importBtn.addEventListener("click", function () {
+      importFile.click();
+    });
+    importFile.addEventListener("change", function () {
+      var file = importFile.files && importFile.files[0];
+      if (!file) {
+        return;
+      }
+      var reader = new FileReader();
+      reader.onload = function () {
+        var mode = currentMode();
+        var result = window.DateChooserSlotFields.parseSlotsText(mode, String(reader.result));
+        slotsList.innerHTML = "";
+        result.slots.forEach(function (s) {
+          var row = rowTemplateFor(mode);
+          if (!row) {
+            return;
+          }
+          ["slot_date", "slot_start_time", "slot_end_time"].forEach(function (name) {
+            var input = row.querySelector('[name="' + name + '"]');
+            if (!input) {
+              return;
+            }
+            if (name === "slot_date") {
+              input.value = s.date || "";
+            } else if (name === "slot_start_time") {
+              input.value = s.start || "";
+            } else if (name === "slot_end_time") {
+              input.value = s.end || "";
+            }
+          });
+          wireRow(row);
+          slotsList.appendChild(row);
+        });
+        if (rows().length === 0) {
+          addRow();
+        }
+        afterRowChange();
+        if (importMessage) {
+          if (result.skipped > 0) {
+            var total = result.slots.length + result.skipped;
+            importMessage.textContent = result.skipped + " of " + total + " line(s) could not be read and were skipped.";
+            importMessage.hidden = false;
+          } else {
+            importMessage.hidden = true;
+          }
+        }
+        importFile.value = "";
+      };
+      reader.readAsText(file);
     });
   }
 

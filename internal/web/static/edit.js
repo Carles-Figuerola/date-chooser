@@ -60,6 +60,14 @@
     return Array.prototype.slice.call(slotsList.querySelectorAll("[data-slot-row]"));
   }
 
+  function rowTemplateFor(mode) {
+    var tpl = document.getElementById("slot-row-template-" + mode);
+    if (!tpl || !tpl.content || !tpl.content.firstElementChild) {
+      return null;
+    }
+    return tpl.content.firstElementChild.cloneNode(true);
+  }
+
   function responseCount(row) {
     return parseInt(row.getAttribute("data-response-count"), 10) || 0;
   }
@@ -176,6 +184,19 @@
     });
   }
 
+  // removeRow applies the exact same removal rule the Remove button uses:
+  // a row with responses is marked (not deleted) so the aggregate warning
+  // + confirm-checkbox gate still protects it; a zero-response row is
+  // deleted immediately. Shared with Import (IMPORT-02), which must not
+  // bypass this safety net just because it's replacing the whole list.
+  function removeRow(row) {
+    if (responseCount(row) > 0) {
+      markRow(row);
+      return;
+    }
+    row.parentNode && row.parentNode.removeChild(row);
+  }
+
   function wireRow(row) {
     window.DateChooserSlotFields.wireRow(row);
 
@@ -186,11 +207,10 @@
     var copyBtn = row.querySelector("[data-copy-slot]");
     if (copyBtn) {
       copyBtn.addEventListener("click", function () {
-        var tpl = document.getElementById("slot-row-template-" + currentMode());
-        if (!tpl || !tpl.content || !tpl.content.firstElementChild) {
+        var newRow = rowTemplateFor(currentMode());
+        if (!newRow) {
           return;
         }
-        var newRow = tpl.content.firstElementChild.cloneNode(true);
         ["slot_date", "slot_start_time", "slot_end_time"].forEach(function (name) {
           var src = row.querySelector('[name="' + name + '"]');
           var dst = newRow.querySelector('[name="' + name + '"]');
@@ -210,17 +230,7 @@
 
     if (removeBtn) {
       removeBtn.addEventListener("click", function () {
-        if (responseCount(row) > 0) {
-          // Real, irreversible data loss if saved — mark instead of
-          // removing from the DOM, per 04-CONTEXT.md.
-          markRow(row);
-          updateRemoveVisibility();
-          updateSaveGate();
-          return;
-        }
-        // Zero-response row: reversible, remove immediately (unchanged
-        // Phase 1 behavior).
-        row.parentNode && row.parentNode.removeChild(row);
+        removeRow(row);
         updateRemoveVisibility();
         updateSaveGate();
       });
@@ -242,11 +252,10 @@
   }
 
   function addRow() {
-    var tpl = document.getElementById("slot-row-template-" + currentMode());
-    if (!tpl || !tpl.content || !tpl.content.firstElementChild) {
+    var row = rowTemplateFor(currentMode());
+    if (!row) {
       return;
     }
-    var row = tpl.content.firstElementChild.cloneNode(true);
     wireRow(row);
     slotsList.appendChild(row);
     updateRemoveVisibility();

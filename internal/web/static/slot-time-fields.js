@@ -224,9 +224,59 @@ window.DateChooserSlotFields = (function () {
     }
   }
 
+  // slotsToText renders a plain-text export: one line per slot, "date"
+  // for an all-day slot or "date,start,end" for a specific-time slot.
+  // slots is an array of {date, start, end} (start/end only used in
+  // date_time mode).
+  function slotsToText(mode, slots) {
+    var lines = slots.map(function (s) {
+      if (mode === "date_time") {
+        return s.date + "," + s.start + "," + s.end;
+      }
+      return s.date;
+    });
+    return lines.join("\n") + "\n";
+  }
+
+  // parseSlotsText parses that same format back into an array of
+  // {date, start, end}. Blank lines are silently ignored (not counted as
+  // skipped — matches the server's own blank-row tolerance). A line that
+  // doesn't match the current mode's expected shape is skipped and
+  // counted, never partially applied.
+  function parseSlotsText(mode, text) {
+    var dateTimeLine = /^(\d{4}-\d{2}-\d{2}),(\d{2}:\d{2}),(\d{2}:\d{2})$/;
+    var allDayLine = /^(\d{4}-\d{2}-\d{2})$/;
+    var slots = [];
+    var skipped = 0;
+    text.split(/\r\n|\r|\n/).forEach(function (rawLine) {
+      var line = rawLine.trim();
+      if (!line) {
+        return;
+      }
+      if (mode === "date_time") {
+        var m = dateTimeLine.exec(line);
+        if (!m) {
+          skipped++;
+          return;
+        }
+        slots.push({ date: m[1], start: m[2], end: m[3] });
+      } else {
+        var m2 = allDayLine.exec(line);
+        if (!m2) {
+          skipped++;
+          return;
+        }
+        slots.push({ date: m2[1] });
+      }
+    });
+    return { slots: slots, skipped: skipped };
+  }
+
   return {
     parseTimeValue: parseTimeValue,
     formatTimeValue: formatTimeValue,
-    wireRow: wireRow
+    wireRow: wireRow,
+    slotsToText: slotsToText,
+    parseSlotsText: parseSlotsText
   };
 })();
