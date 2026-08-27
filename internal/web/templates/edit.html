@@ -68,6 +68,7 @@
             <input type="date" name="slot_date" value="{{$slot.Date}}" aria-label="Slot date" data-date-input>
             {{end}}
           </div>
+          <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
           <button type="button" class="btn-remove" data-remove-slot{{if eq (len $.Slots) 1}} hidden disabled{{end}}>Remove slot</button>
           <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
           {{if $slot.Error}}<p class="field-error">{{$slot.Error}}</p>{{end}}
@@ -106,6 +107,7 @@
     <div class="slot-row-fields" data-slot-row-fields>
       <input type="date" name="slot_date" aria-label="Slot date" data-date-input>
     </div>
+    <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
     <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
     <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
     <p class="field-error slot-removal-inline-warning" data-slot-warning hidden></p>
@@ -136,6 +138,7 @@
         </div>
       </div>
     </div>
+    <button type="button" class="btn-copy-slot" data-copy-slot>Copy</button>
     <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
     <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
     <p class="field-error slot-removal-inline-warning" data-slot-warning hidden></p>

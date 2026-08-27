@@ -179,6 +179,32 @@
   function wireRow(row) {
     window.DateChooserSlotFields.wireRow(row);
 
+    // Copy clones this row's current date/start/end values into a new,
+    // always-blank-slate row (no slot_id, 0 response count) appended to the
+    // end of the list — mirrors create.js's Copy button (SLOT-04). The
+    // original row is never modified.
+    var copyBtn = row.querySelector("[data-copy-slot]");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        var tpl = document.getElementById("slot-row-template-" + currentMode());
+        if (!tpl || !tpl.content || !tpl.content.firstElementChild) {
+          return;
+        }
+        var newRow = tpl.content.firstElementChild.cloneNode(true);
+        ["slot_date", "slot_start_time", "slot_end_time"].forEach(function (name) {
+          var src = row.querySelector('[name="' + name + '"]');
+          var dst = newRow.querySelector('[name="' + name + '"]');
+          if (src && dst) {
+            dst.value = src.value;
+          }
+        });
+        wireRow(newRow);
+        slotsList.appendChild(newRow);
+        updateRemoveVisibility();
+        updateSaveGate();
+      });
+    }
+
     var removeBtn = row.querySelector("[data-remove-slot]");
     var undoBtn = row.querySelector("[data-undo-slot]");
 

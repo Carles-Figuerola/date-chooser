@@ -164,6 +164,62 @@ func TestSlotUX_EditPageSharesTimeFieldWiring(t *testing.T) {
 	}
 }
 
+// TestSlotUX_SecondaryButtonHiddenAttributeRespected proves .btn-secondary
+// has a [hidden] override rule, matching the existing .btn-remove[hidden]
+// pattern. Without it, .btn-secondary's unconditional "display: inline-flex"
+// (equal CSS specificity to the browser's default [hidden]{display:none})
+// wins by source order, so the edit page's Undo button — which is
+// .btn-secondary and starts with the hidden attribute — renders visible
+// from page load regardless of whether its row is actually marked for
+// removal, making it look like clicking it "does nothing" when the row
+// isn't marked.
+func TestSlotUX_SecondaryButtonHiddenAttributeRespected(t *testing.T) {
+	data, err := os.ReadFile("static/style.css")
+	if err != nil {
+		t.Fatalf("reading static/style.css: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, ".btn-secondary[hidden]") {
+		t.Fatalf("expected a .btn-secondary[hidden] rule in style.css, got none")
+	}
+}
+
+// TestSlotUX_EditPageHasCopyButton proves edit.html carries the same
+// data-copy-slot "Copy" button as create.html (server-rendered row + both
+// templates), and that edit.js wires it using the same
+// template-clone-and-append pattern as create.js's Copy handler (SLOT-04).
+// edit.html never got the Copy button when Phase 5/v1.1 added it — a real
+// gap, not a regression.
+func TestSlotUX_EditPageHasCopyButton(t *testing.T) {
+	html, err := os.ReadFile("templates/edit.html")
+	if err != nil {
+		t.Fatalf("reading templates/edit.html: %v", err)
+	}
+	htmlContent := string(html)
+
+	count := strings.Count(htmlContent, "data-copy-slot")
+	if count < 3 {
+		t.Fatalf("expected data-copy-slot to appear at least 3 times in edit.html (server-rendered row + 2 templates), got %d", count)
+	}
+	if !strings.Contains(htmlContent, ">Copy<") {
+		t.Fatalf("expected a Copy button labeled \"Copy\" in edit.html, got no match")
+	}
+
+	js, err := os.ReadFile("static/edit.js")
+	if err != nil {
+		t.Fatalf("reading static/edit.js: %v", err)
+	}
+	jsContent := string(js)
+
+	if !strings.Contains(jsContent, "data-copy-slot") {
+		t.Fatalf("expected edit.js to reference data-copy-slot, got no match")
+	}
+	if !strings.Contains(jsContent, "appendChild") {
+		t.Fatalf("expected the copy handler to append the new row, got no match")
+	}
+}
+
 // TestSlotUX_CopyButton_Markup proves create.html carries a data-copy-slot
 // "Copy" button in the server-rendered row loop and in both row templates
 // (SLOT-04).

@@ -158,6 +158,10 @@ textarea:focus {
   display: none;
 }
 
+.btn-secondary[hidden] {
+  display: none;
+}
+
 /* Phase 5 (v1.1) — per-slot "Copy" button (SLOT-04). Named .btn-copy-slot
    rather than .btn-copy: .btn-copy already exists (links.html "Copy link"
    button, styled solid-accent, wired via copy.js's document-wide
