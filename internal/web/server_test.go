@@ -3,6 +3,7 @@ package web
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -419,6 +420,427 @@ func TestCreatePoll_DateTimeEndNotAfterStart_RejectedWithoutRedirect(t *testing.
 	}
 	if pollCount != 0 {
 		t.Fatalf("expected no poll row for invalid time-range submit, got %d", pollCount)
+	}
+}
+
+func TestVote_EndToEnd_SubmitAndRevisit(t *testing.T) {
+	ts, st := newTestServer(t)
+
+	// Create a poll with two slots directly through the store (reuse
+	// CreatePoll rather than the HTTP create flow, since this test is about
+	// the voting slice, not poll creation).
+	ctx := context.Background()
+	endA := "2026-09-01T10:00"
+	endB := "2026-09-02T15:00"
+	poll, err := st.CreatePoll(ctx, store.NewPollInput{
+		Title:    "Team Offsite",
+		PollType: "date_time",
+		Slots: []store.NewSlotInput{
+			{StartsAt: "2026-09-01T09:00", EndsAt: &endA},
+			{StartsAt: "2026-09-02T14:00", EndsAt: &endB},
+		},
+	}, "ptok-vote-e2e", "atok-vote-e2e")
+	if err != nil {
+		t.Fatalf("CreatePoll() error: %v", err)
+	}
+
+	_, slots, err := st.PollByParticipantToken(ctx, poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("PollByParticipantToken() error: %v", err)
+	}
+	if len(slots) != 2 {
+		t.Fatalf("expected 2 slots, got %d", len(slots))
+	}
+
+	votePath := "/poll/" + poll.ParticipantToken
+
+	// GET the voting form: expect the name field and a Yes/No/Maybe control.
+	getResp, err := http.Get(ts.URL + votePath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", votePath, err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", getResp.StatusCode)
+	}
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, `name="display_name"`) {
+		t.Fatalf("expected display_name field in body, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, fmt.Sprintf("answer_%d", slots[0].ID)) {
+		t.Fatalf("expected a Yes/No/Maybe control for slot %d in body, got: %s", slots[0].ID, bodyStr)
+	}
+
+	// POST a valid response: name + an answer for every slot.
+	form := url.Values{}
+	form.Set("display_name", "Alice")
+	form.Set("comment", "looking forward to it")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	form.Set(fmt.Sprintf("answer_%d", slots[1].ID), "maybe")
+
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+	postResp, err := client.PostForm(ts.URL+votePath+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST %s/responses error: %v", votePath, err)
+	}
+	defer postResp.Body.Close()
+
+	if postResp.StatusCode != http.StatusSeeOther {
+		b, _ := io.ReadAll(postResp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", postResp.StatusCode, b)
+	}
+	if got := postResp.Header.Get("Location"); got != votePath+"?saved=1" {
+		t.Fatalf("expected redirect to %s?saved=1, got %q", votePath, got)
+	}
+
+	var participantCookie *http.Cookie
+	for _, c := range postResp.Cookies() {
+		if c.Name == participantCookieName {
+			participantCookie = c
+		}
+	}
+	if participantCookie == nil {
+		t.Fatalf("expected a Set-Cookie for %s, got cookies: %v", participantCookieName, postResp.Cookies())
+	}
+	if !participantCookie.HttpOnly {
+		t.Fatalf("expected %s cookie to be HttpOnly", participantCookieName)
+	}
+
+	// DB now holds exactly one participants row and one responses row per slot.
+	var participantCount int
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID).Scan(&participantCount); err != nil {
+		t.Fatalf("querying participants: %v", err)
+	}
+	if participantCount != 1 {
+		t.Fatalf("expected exactly 1 participants row, got %d", participantCount)
+	}
+	var responseCount int
+	if err := st.DB().QueryRowContext(ctx, `
+		SELECT COUNT(*) FROM responses r
+		JOIN participants p ON p.id = r.participant_id
+		WHERE p.poll_id = ?
+	`, poll.ID).Scan(&responseCount); err != nil {
+		t.Fatalf("querying responses: %v", err)
+	}
+	if responseCount != len(slots) {
+		t.Fatalf("expected %d responses rows, got %d", len(slots), responseCount)
+	}
+
+	// Re-GET carrying the cookie: prior answer for slot 0 should be pre-checked.
+	req, err := http.NewRequest(http.MethodGet, ts.URL+votePath, nil)
+	if err != nil {
+		t.Fatalf("building request: %v", err)
+	}
+	req.AddCookie(participantCookie)
+	revisitResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("GET %s (revisit) error: %v", votePath, err)
+	}
+	defer revisitResp.Body.Close()
+	revisitBody, err := io.ReadAll(revisitResp.Body)
+	if err != nil {
+		t.Fatalf("reading revisit body: %v", err)
+	}
+	revisitStr := string(revisitBody)
+	if !strings.Contains(revisitStr, `value="Alice"`) {
+		t.Fatalf("expected pre-filled display name 'Alice' in revisit body, got: %s", revisitStr)
+	}
+	wantChecked := fmt.Sprintf(`name="answer_%d" value="yes" checked`, slots[0].ID)
+	if !strings.Contains(revisitStr, wantChecked) {
+		t.Fatalf("expected %q pre-checked in revisit body, got: %s", wantChecked, revisitStr)
+	}
+
+	// Resubmit a changed answer with the same cookie: participants count
+	// stays at 1, and the stored answer for slot 0 changes to "no".
+	form2 := url.Values{}
+	form2.Set("display_name", "Alice")
+	form2.Set("comment", "changed my mind")
+	form2.Set(fmt.Sprintf("answer_%d", slots[0].ID), "no")
+	form2.Set(fmt.Sprintf("answer_%d", slots[1].ID), "maybe")
+
+	req2, err := http.NewRequest(http.MethodPost, ts.URL+votePath+"/responses", strings.NewReader(form2.Encode()))
+	if err != nil {
+		t.Fatalf("building resubmit request: %v", err)
+	}
+	req2.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req2.AddCookie(participantCookie)
+	resubmitResp, err := client.Do(req2)
+	if err != nil {
+		t.Fatalf("resubmit POST error: %v", err)
+	}
+	defer resubmitResp.Body.Close()
+	if resubmitResp.StatusCode != http.StatusSeeOther {
+		b, _ := io.ReadAll(resubmitResp.Body)
+		t.Fatalf("expected 303 on resubmit, got %d; body: %s", resubmitResp.StatusCode, b)
+	}
+
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID).Scan(&participantCount); err != nil {
+		t.Fatalf("querying participants after resubmit: %v", err)
+	}
+	if participantCount != 1 {
+		t.Fatalf("expected participants count to stay at 1 after resubmit, got %d", participantCount)
+	}
+
+	var storedAnswer string
+	if err := st.DB().QueryRowContext(ctx, `
+		SELECT r.answer FROM responses r
+		JOIN participants p ON p.id = r.participant_id
+		WHERE p.poll_id = ? AND r.slot_id = ?
+	`, poll.ID, slots[0].ID).Scan(&storedAnswer); err != nil {
+		t.Fatalf("querying updated response: %v", err)
+	}
+	if storedAnswer != "no" {
+		t.Fatalf("expected stored answer for slot %d to be 'no' after resubmit, got %q", slots[0].ID, storedAnswer)
+	}
+}
+
+// createVotePollWithSlots creates a poll with n all_day slots via the store
+// directly (bypassing the HTTP create flow, since these tests are about vote
+// submission validation, not poll creation) and returns the poll and its
+// persisted slots (ordered by position).
+func createVotePollWithSlots(t *testing.T, st *store.Store, title, ptoken, atoken string, n int) (*store.Poll, []store.Slot) {
+	t.Helper()
+	ctx := context.Background()
+	slots := make([]store.NewSlotInput, n)
+	for i := range slots {
+		slots[i] = store.NewSlotInput{StartsAt: fmt.Sprintf("2026-09-%02d", i+1)}
+	}
+	poll, err := st.CreatePoll(ctx, store.NewPollInput{
+		Title:    title,
+		PollType: "all_day",
+		Slots:    slots,
+	}, ptoken, atoken)
+	if err != nil {
+		t.Fatalf("CreatePoll() error: %v", err)
+	}
+	_, persisted, err := st.PollByParticipantToken(ctx, poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("PollByParticipantToken() error: %v", err)
+	}
+	return poll, persisted
+}
+
+func TestVote_BlankName_RejectedNoWrite(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Blank Name Poll", "ptok-blank-name", "atok-blank-name", 1)
+
+	form := url.Values{}
+	form.Set("display_name", "   ")
+	form.Set("comment", "hello")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 re-render, got %d; body: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Your name is required.") {
+		t.Fatalf("expected name-required copy in body, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "Check the highlighted fields and try again.") {
+		t.Fatalf("expected banner copy in body, got: %s", bodyStr)
+	}
+	wantChecked := fmt.Sprintf(`name="answer_%d" value="yes" checked`, slots[0].ID)
+	if !strings.Contains(bodyStr, wantChecked) {
+		t.Fatalf("expected submitted answer preserved as checked, got: %s", bodyStr)
+	}
+
+	ctx := context.Background()
+	var participantCount int
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID).Scan(&participantCount); err != nil {
+		t.Fatalf("querying participants: %v", err)
+	}
+	if participantCount != 0 {
+		t.Fatalf("expected zero participants rows on blank-name submit, got %d", participantCount)
+	}
+}
+
+func TestVote_MissingSlotAnswer_RejectedNoWrite(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Missing Answer Poll", "ptok-missing-answer", "atok-missing-answer", 2)
+
+	form := url.Values{}
+	form.Set("display_name", "Bob")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	// slots[1] intentionally left unanswered.
+
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 re-render, got %d; body: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Choose Yes, No, or Maybe for this slot.") {
+		t.Fatalf("expected per-slot error copy in body, got: %s", bodyStr)
+	}
+	wantChecked := fmt.Sprintf(`name="answer_%d" value="yes" checked`, slots[0].ID)
+	if !strings.Contains(bodyStr, wantChecked) {
+		t.Fatalf("expected other slot's submitted answer preserved as checked, got: %s", bodyStr)
+	}
+
+	ctx := context.Background()
+	var participantCount int
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID).Scan(&participantCount); err != nil {
+		t.Fatalf("querying participants: %v", err)
+	}
+	if participantCount != 0 {
+		t.Fatalf("expected zero participants rows on missing-slot-answer submit, got %d", participantCount)
+	}
+}
+
+func TestVote_NameTooLong_RejectedNoWrite(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Name Too Long Poll", "ptok-name-too-long", "atok-name-too-long", 1)
+
+	form := url.Values{}
+	form.Set("display_name", strings.Repeat("a", 101))
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 re-render, got %d; body: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if !strings.Contains(string(body), "Check the highlighted fields and try again.") {
+		t.Fatalf("expected banner copy in body, got: %s", body)
+	}
+
+	ctx := context.Background()
+	var participantCount int
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID).Scan(&participantCount); err != nil {
+		t.Fatalf("querying participants: %v", err)
+	}
+	if participantCount != 0 {
+		t.Fatalf("expected zero participants rows on name-too-long submit, got %d", participantCount)
+	}
+}
+
+func TestVote_CommentTooLong_RejectedNoWrite(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Comment Too Long Poll", "ptok-comment-too-long", "atok-comment-too-long", 1)
+
+	form := url.Values{}
+	form.Set("display_name", "Carol")
+	form.Set("comment", strings.Repeat("b", 501))
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 re-render, got %d; body: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if !strings.Contains(string(body), "Check the highlighted fields and try again.") {
+		t.Fatalf("expected banner copy in body, got: %s", body)
+	}
+
+	ctx := context.Background()
+	var participantCount int
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID).Scan(&participantCount); err != nil {
+		t.Fatalf("querying participants: %v", err)
+	}
+	if participantCount != 0 {
+		t.Fatalf("expected zero participants rows on comment-too-long submit, got %d", participantCount)
+	}
+}
+
+func TestVote_AllValid_StillPersists(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "All Valid Poll", "ptok-all-valid", "atok-all-valid", 2)
+
+	form := url.Values{}
+	form.Set("display_name", "Dave")
+	form.Set("comment", "sounds good")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	form.Set(fmt.Sprintf("answer_%d", slots[1].ID), "no")
+
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", resp.StatusCode, body)
+	}
+
+	ctx := context.Background()
+	var participantCount int
+	if err := st.DB().QueryRowContext(ctx, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID).Scan(&participantCount); err != nil {
+		t.Fatalf("querying participants: %v", err)
+	}
+	if participantCount != 1 {
+		t.Fatalf("expected exactly 1 participants row for a fully valid submission, got %d", participantCount)
+	}
+}
+
+func TestNotFound_InvalidPollLink(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	resp, err := http.Get(ts.URL + "/poll/does-not-exist")
+	if err != nil {
+		t.Fatalf("GET error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "This poll link isn't valid. Double-check the link you were given.") {
+		t.Fatalf("expected invalid-link copy in body, got: %s", bodyStr)
+	}
+	if strings.Contains(bodyStr, "Save my response") {
+		t.Fatalf("expected no voting form in 404 body, got: %s", bodyStr)
 	}
 }
 

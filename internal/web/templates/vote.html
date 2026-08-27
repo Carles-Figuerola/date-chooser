@@ -1,0 +1,53 @@
+{{define "content"}}
+<div class="card">
+  <h1 class="display">{{.Poll.Title}}</h1>
+
+  <div id="saved-banner" class="banner-success"{{if not .Saved}} hidden{{end}}>Thanks! Your response has been saved.</div>
+
+  <div id="form-banner" class="banner-error"{{if not .BannerError}} hidden{{end}}>{{.BannerError}}</div>
+
+  <form method="post" action="/poll/{{.Poll.ParticipantToken}}/responses" class="form" id="vote-form">
+    <div class="form-section">
+      <div class="field">
+        <label for="display_name" class="label">Your name</label>
+        <input type="text" id="display_name" name="display_name" maxlength="100" required placeholder="Jane Doe" value="{{.DisplayName}}">
+        {{if .NameError}}<p class="field-error">{{.NameError}}</p>{{end}}
+      </div>
+    </div>
+
+    <div class="form-section">
+      {{range .Slots}}
+      <div class="slot-row" data-slot-row>
+        <span class="label">{{.Label}}</span>
+        <div class="pill-group" role="radiogroup" aria-label="{{.Label}}">
+          <label class="pill pill-yes">
+            <input type="radio" name="answer_{{.ID}}" value="yes"{{if eq .Selected "yes"}} checked{{end}}>
+            <span>Yes</span>
+          </label>
+          <label class="pill pill-no">
+            <input type="radio" name="answer_{{.ID}}" value="no"{{if eq .Selected "no"}} checked{{end}}>
+            <span>No</span>
+          </label>
+          <label class="pill pill-maybe">
+            <input type="radio" name="answer_{{.ID}}" value="maybe"{{if eq .Selected "maybe"}} checked{{end}}>
+            <span>Maybe</span>
+          </label>
+        </div>
+        {{if .Error}}<p class="field-error">{{.Error}}</p>{{end}}
+      </div>
+      {{end}}
+    </div>
+
+    <div class="form-section">
+      <div class="field">
+        <label for="comment" class="label">Comment (optional)</label>
+        <textarea id="comment" name="comment" maxlength="500" rows="3" placeholder="Anything the group should know?">{{.Comment}}</textarea>
+      </div>
+    </div>
+
+    <button type="submit" class="btn-primary" id="submit-btn">Save my response</button>
+  </form>
+</div>
+
+<script src="/static/vote.js" defer></script>
+{{end}}

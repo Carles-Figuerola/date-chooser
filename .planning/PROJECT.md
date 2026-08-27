@@ -15,14 +15,14 @@ An organizer can create a poll of date/time options and get back, without any si
 - ✓ Organizer can create a poll with a name/description and a set of candidate date/time slots — Phase 1
 - ✓ Organizer receives a shareable participant link and a separate secret admin link — Phase 1
 - ✓ App runs from a single Docker image, storing all data in a SQLite file on a mounted volume — Phase 1
+- ✓ Participant can open the poll link (no login) and respond Yes/No/Maybe per slot, with an optional short comment — Phase 2
+- ✓ Works well on both desktop and mobile browsers — Phase 1 + Phase 2 (poll creation and voting flows both confirmed at mobile width; still open for results/admin UI in later phases)
 
 ### Active
 
-- [ ] Participant can open the poll link (no login) and respond Yes/No/Maybe per slot, with an optional short comment
 - [ ] Poll page shows a results grid (slots x participants) with per-slot Yes/No/Maybe tallies
 - [ ] Admin can view all responses and see which slot(s) have the best overall availability
 - [ ] Admin can edit or delete the poll
-- [ ] Works well on both desktop and mobile browsers (partially validated in Phase 1's poll-creation flow; still open for voting/results/admin UI in later phases)
 
 ### Out of Scope
 
@@ -57,6 +57,8 @@ An organizer can create a poll of date/time options and get back, without any si
 | Server-rendered web UI (not a SPA) over a Go backend | Simplest way to get a fast, mobile-friendly UI with minimal JS, fits a single-binary Go app well | ✓ Good — Phase 1: `html/template` + a small progressive-enhancement JS file per page |
 | Go 1.25 (not 1.23 as originally planned) | `modernc.org/sqlite`'s transitive deps required go ≥1.25 to compile — discovered during Phase 1 execution | ✓ Good — no other impact |
 | Date+time slot inputs: separate `<input type=date>` + two `<input type=time step=900>` (not `datetime-local` x2) | User found the original `datetime-local` x2 UX confusing (calendar icon only picks date, no visible time picker) during manual testing; CONTEXT.md already established start/end share one date, so this only needed a rendering split, not a data-model change | ✓ Good — Phase 1, plus a custom hour-dropdown + ±15min stepper layered on top per follow-up user feedback |
+| Participant identity via HttpOnly cookie (not login, not name-matching) | No accounts in scope; a cookie lets "revisit and change your vote" work without introducing any auth; anti-overwrite rule (no cookie match = always a new response) protects against name-collision data loss | ✓ Good — Phase 2, confirmed working (revisit pre-fill + resubmit) in manual testing |
+| Yes/No/Maybe pill buttons: tri-color (green/red/gray), not single-accent | UI researcher's draft used one accent color for all three states to stay within Phase 1's 2-color budget; user explicitly asked for the more scannable Doodle/Rallly convention instead | ✓ Good — Phase 2, confirmed correct rendering (colors, tap targets, no overflow at mobile width) |
 
 ## Evolution
 
@@ -76,4 +78,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-25 after Phase 1*
+*Last updated: 2026-08-25 after Phase 2*

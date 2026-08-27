@@ -29,6 +29,32 @@ const bannerErrorCopy = "Check the highlighted fields and try again."
 // slot row whose end is not strictly after its start (or is incomplete).
 const rowErrorCopy = "End time must be after start time."
 
+// nameRequiredCopy is the exact UI-SPEC inline field error shown under the
+// display-name field on the voting form when it is blank.
+const nameRequiredCopy = "Your name is required."
+
+// slotAnswerRequiredCopy is the exact UI-SPEC inline row error shown under a
+// voting-form slot row left without a Yes/No/Maybe answer at submit time.
+const slotAnswerRequiredCopy = "Choose Yes, No, or Maybe for this slot."
+
+// maxDisplayNameRunes and maxCommentRunes are the server-side defense-in-depth
+// caps behind the voting form's native maxlength attributes (a client can
+// bypass maxlength, so these are enforced again here).
+const maxDisplayNameRunes = 100
+const maxCommentRunes = 500
+
+// dateOnlyLayout matches the value format of an HTML5 date input used for
+// all_day slots: "2006-01-02".
+const dateOnlyLayout = "2006-01-02"
+
+// participantCookieName is the HttpOnly cookie identifying a participant
+// across visits, scoped to this poll's voting path (threat T-02-01/T-02-02).
+const participantCookieName = "dc_participant"
+
+// participantCookieMaxAge is ~1 year, per CONTEXT.md's "come back later and
+// change your vote" requirement.
+const participantCookieMaxAge = 365 * 24 * 60 * 60
+
 // createFormView is the data passed to create.html for both the initial GET
 // render and any validation-failure re-render (HTTP 200, values preserved).
 type createFormView struct {
@@ -84,6 +110,8 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleCreateForm)
 	mux.HandleFunc("POST /polls", s.handleCreatePoll)
 	mux.HandleFunc("GET /poll/{ptoken}/admin/{atoken}", s.handleLinksPage)
+	mux.HandleFunc("GET /poll/{ptoken}", s.handleVoteForm)
+	mux.HandleFunc("POST /poll/{ptoken}/responses", s.handleSubmitResponse)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 
 	staticSub, err := fs.Sub(staticFS, "static")
@@ -332,6 +360,235 @@ func (s *Server) handleLinksPage(w http.ResponseWriter, r *http.Request) {
 	if err := s.tmpl.links.ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
+}
+
+// voteFormView is the data passed to vote.html for both the initial GET
+// render (fresh or pre-filled from a matching cookie) and the post-submit
+// redirect-back render (Saved=true).
+type voteFormView struct {
+	Poll        *store.Poll
+	Slots       []voteSlotView
+	DisplayName string
+	Comment     string
+	Saved       bool
+	NameError   string
+	BannerError string
+}
+
+// voteSlotView is one rendered slot row: its human-readable label and
+// whichever answer ("yes"/"no"/"maybe") is currently selected, if any.
+type voteSlotView struct {
+	ID       int64
+	Label    string
+	Selected string
+	Error    string
+}
+
+// slotLabel formats a persisted slot for display, per poll type. On any
+// parse error it falls back to the raw stored value rather than failing the
+// whole page render.
+func slotLabel(pollType string, sl store.Slot) string {
+	switch pollType {
+	case "date_time":
+		start, err := time.Parse(dateTimeLayout, sl.StartsAt)
+		if err != nil {
+			return sl.StartsAt
+		}
+		label := start.Format("Mon, Jan 2, 2006 3:04 PM")
+		if sl.EndsAt != nil {
+			end, err := time.Parse(dateTimeLayout, *sl.EndsAt)
+			if err == nil {
+				label += " – " + end.Format("3:04 PM")
+			}
+		}
+		return label
+	default: // all_day
+		start, err := time.Parse(dateOnlyLayout, sl.StartsAt)
+		if err != nil {
+			return sl.StartsAt
+		}
+		return start.Format("Mon, Jan 2, 2006")
+	}
+}
+
+// requestIsHTTPS reports whether the original client request used HTTPS,
+// honoring both a direct TLS connection and the X-Forwarded-Proto header set
+// by a reverse proxy (mirrors handleLinksPage's scheme detection).
+func requestIsHTTPS(r *http.Request) bool {
+	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
+}
+
+func (s *Server) handleVoteForm(w http.ResponseWriter, r *http.Request) {
+	ptoken := r.PathValue("ptoken")
+
+	poll, slots, err := s.store.PollByParticipantToken(r.Context(), ptoken)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderNotFound(w)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	view := voteFormView{
+		Poll:  poll,
+		Slots: make([]voteSlotView, len(slots)),
+		Saved: r.URL.Query().Get("saved") == "1",
+	}
+
+	var answers map[int64]string
+	if cookie, err := r.Cookie(participantCookieName); err == nil {
+		participant, a, err := s.store.ParticipantByCookie(r.Context(), poll.ID, cookie.Value)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if participant != nil {
+			view.DisplayName = participant.DisplayName
+			view.Comment = participant.Comment
+			answers = a
+		}
+	}
+
+	for i, sl := range slots {
+		view.Slots[i] = voteSlotView{
+			ID:    sl.ID,
+			Label: slotLabel(poll.PollType, sl),
+		}
+		if answers != nil {
+			view.Slots[i].Selected = answers[sl.ID]
+		}
+	}
+
+	s.renderVoteForm(w, view)
+}
+
+// renderVoteForm executes vote.html with the given view.
+func (s *Server) renderVoteForm(w http.ResponseWriter, view voteFormView) {
+	if err := s.tmpl.vote.ExecuteTemplate(w, "layout", view); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+
+// renderNotFound renders the branded invalid-link 404 page (a plain card
+// with no form and no nav, per UI-SPEC) with HTTP 404, replacing the bare
+// http.NotFound stub used by the tracer. The status must be written before
+// any body bytes, so it is set first regardless of template execution
+// outcome.
+func (s *Server) renderNotFound(w http.ResponseWriter) {
+	w.WriteHeader(http.StatusNotFound)
+	_ = s.tmpl.notfound.ExecuteTemplate(w, "layout", nil)
+}
+
+func (s *Server) handleSubmitResponse(w http.ResponseWriter, r *http.Request) {
+	ptoken := r.PathValue("ptoken")
+
+	poll, slots, err := s.store.PollByParticipantToken(r.Context(), ptoken)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderNotFound(w)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	if err := r.ParseForm(); err != nil {
+		if strings.Contains(err.Error(), "too large") {
+			http.Error(w, "Request body too large.", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, bannerErrorCopy, http.StatusBadRequest)
+		return
+	}
+
+	displayName := strings.TrimSpace(r.FormValue("display_name"))
+	comment := r.FormValue("comment")
+
+	// Build the re-render view and validate BEFORE any DB write. Every
+	// submitted value is preserved in the view regardless of validity, so a
+	// rejected submission re-renders with the participant's own input intact
+	// (never silently dropped) — matching the Phase 1 create-poll pattern.
+	view := voteFormView{
+		Poll:        poll,
+		Slots:       make([]voteSlotView, len(slots)),
+		DisplayName: displayName,
+		Comment:     comment,
+	}
+
+	hasError := false
+
+	if displayName == "" {
+		view.NameError = nameRequiredCopy
+		hasError = true
+	}
+	if len([]rune(displayName)) > maxDisplayNameRunes || len([]rune(comment)) > maxCommentRunes {
+		hasError = true
+	}
+
+	answers := make(map[int64]string, len(slots))
+	for i, sl := range slots {
+		val := r.FormValue(fmt.Sprintf("answer_%d", sl.ID))
+		view.Slots[i] = voteSlotView{
+			ID:       sl.ID,
+			Label:    slotLabel(poll.PollType, sl),
+			Selected: val,
+		}
+		if val == "yes" || val == "no" || val == "maybe" {
+			answers[sl.ID] = val
+		} else {
+			view.Slots[i].Error = slotAnswerRequiredCopy
+			hasError = true
+		}
+	}
+
+	if hasError {
+		view.BannerError = bannerErrorCopy
+		s.renderVoteForm(w, view)
+		return
+	}
+
+	cookieToken := ""
+	if cookie, err := r.Cookie(participantCookieName); err == nil {
+		existing, _, err := s.store.ParticipantByCookie(r.Context(), poll.ID, cookie.Value)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		if existing != nil {
+			cookieToken = existing.CookieToken
+		}
+	}
+
+	freshCookie := cookieToken == ""
+	if freshCookie {
+		cookieToken, err = token.New()
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	if _, err := s.store.SaveResponse(r.Context(), poll.ID, cookieToken, displayName, comment, answers); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if freshCookie {
+		http.SetCookie(w, &http.Cookie{
+			Name:     participantCookieName,
+			Value:    cookieToken,
+			Path:     "/poll/" + ptoken,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+			MaxAge:   participantCookieMaxAge,
+			Secure:   requestIsHTTPS(r),
+		})
+	}
+
+	http.Redirect(w, r, "/poll/"+ptoken+"?saved=1", http.StatusSeeOther)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
