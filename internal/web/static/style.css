@@ -125,6 +125,9 @@ textarea:focus {
 }
 
 .btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 44px;
   padding: var(--space-sm) var(--space-md);
   background: var(--color-surface);
@@ -133,6 +136,7 @@ textarea:focus {
   border-radius: 6px;
   font-size: 16px;
   font-weight: 600;
+  text-decoration: none;
   cursor: pointer;
   margin-bottom: var(--space-sm);
 }
@@ -574,4 +578,96 @@ textarea:focus {
   color: var(--color-accent);
   font-size: 14px;
   font-weight: 600;
+}
+
+/* Phase 4 — admin edit form (04-UI-SPEC.md). Reuses only tokens declared in
+   the :root block above; zero new hex values. */
+
+.toggle-disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toggle-disabled .toggle-option {
+  cursor: not-allowed;
+}
+
+.slot-row-marked {
+  background: var(--color-bg);
+}
+
+.slot-row-marked .slot-row-fields {
+  text-decoration: line-through;
+  color: var(--color-text-muted);
+}
+
+.slot-removal-inline-warning {
+  flex: 1 1 100%;
+  margin: var(--space-xs) 0 0;
+}
+
+#slot-removal-aggregate-warning {
+  margin-top: var(--space-md);
+}
+
+#slot-removal-aggregate-warning label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: 44px;
+  margin-top: var(--space-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Plan 04-02 — admin-only "Remove" response-deletion row on the results
+   grid (04-UI-SPEC.md). Reuses .btn-remove's destructive outline styling; no
+   new hex values. */
+
+.results-admin-row th {
+  padding-top: 0;
+  text-align: center;
+}
+
+.results-admin-remove {
+  display: inline-flex;
+  justify-content: center;
+}
+
+.btn-remove-response {
+  min-height: 44px;
+  padding: var(--space-xs) var(--space-sm);
+  font-size: 14px;
+}
+
+/* Plan 04-03 — danger zone (whole-poll delete, edit page). Reuses
+   .banner-error's exact tint/border pairing for the card, and .btn-remove's
+   destructive color inverted to a solid fill for the single new component
+   this phase introduces (.btn-danger) — zero new hex values (04-UI-SPEC.md
+   "Color" / "destructive-color escalation"). */
+
+.danger-zone {
+  background: #FEF2F2;
+  border: 1px solid var(--color-destructive);
+  margin-top: var(--space-xl);
+}
+
+.danger-zone .heading {
+  color: var(--color-destructive);
+}
+
+.danger-zone .body {
+  margin: 0 0 var(--space-md);
+}
+
+.btn-danger {
+  min-height: 44px;
+  padding: var(--space-sm) 24px;
+  background: var(--color-destructive);
+  color: var(--color-surface);
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
 }

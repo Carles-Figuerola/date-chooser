@@ -1,5 +1,20 @@
 # Date Chooser
 
+## Current State
+
+**v1.0 shipped 2026-08-25.** All 23 v1 requirements delivered and verified across 4 phases (Poll Creation & Docker, Voting, Results Grid, Admin Management). Milestone audit passed with zero gaps and zero outstanding tech debt. Full history: [`.planning/milestones/v1.0-ROADMAP.md`](milestones/v1.0-ROADMAP.md) and [`.planning/milestones/v1.0-REQUIREMENTS.md`](milestones/v1.0-REQUIREMENTS.md).
+
+## Next Milestone Goals
+
+No milestone is currently active. Candidate v2 scope already identified (see the archived v1.0 requirements' "v2 Requirements" section):
+
+- Notifications (email/webhook on new responses)
+- Timezone-aware slot display
+- Calendar (.ics) export
+- Poll "finalize" step that locks in the chosen slot and notifies participants
+
+Run `/gsd-new-milestone` when ready to scope the next milestone.
+
 ## What This Is
 
 A self-hosted, account-free meeting scheduler (a Doodle/Rallly-style poll tool). An organizer creates a poll with a set of candidate dates/times, shares a link with a group, and each invitee marks Yes/No/Maybe (with an optional comment) per slot. The organizer gets a secret admin link to view results and manage the poll. Runs as a single Docker container backed by SQLite on a mounted volume.
@@ -18,11 +33,12 @@ An organizer can create a poll of date/time options and get back, without any si
 - ✓ Participant can open the poll link (no login) and respond Yes/No/Maybe per slot, with an optional short comment — Phase 2
 - ✓ Poll page shows a results grid (slots x participants) with per-slot Yes/No/Maybe tallies — Phase 3
 - ✓ Admin can view all responses and see which slot(s) have the best overall availability — Phase 3
-- ✓ Works well on both desktop and mobile browsers — Phase 1 + Phase 2 + Phase 3 (poll creation, voting, and results grid all confirmed at mobile width; still open for the admin editing UI in Phase 4)
+- ✓ Admin can edit or delete the poll — Phase 4
+- ✓ Works well on both desktop and mobile browsers — Phase 1 + Phase 2 + Phase 3 + Phase 4 (every screen confirmed at mobile width)
 
 ### Active
 
-- [ ] Admin can edit or delete the poll
+(None — all v1 requirements shipped and validated. See v2 candidates already tracked in `.planning/REQUIREMENTS.md`: notifications, timezone handling, calendar export, poll finalization.)
 
 ### Out of Scope
 
@@ -61,7 +77,10 @@ An organizer can create a poll of date/time options and get back, without any si
 | Yes/No/Maybe pill buttons: tri-color (green/red/gray), not single-accent | UI researcher's draft used one accent color for all three states to stay within Phase 1's 2-color budget; user explicitly asked for the more scannable Doodle/Rallly convention instead | ✓ Good — Phase 2, confirmed correct rendering (colors, tap targets, no overflow at mobile width) |
 | Results grid cell glyphs: ✓/✗/? (not Y/N/M letters) | Researcher's draft used single letters to avoid an icon-library dependency; user asked for checkmark/X/question glyphs instead — still plain Unicode text, no new dependency, more scannable | ✓ Good — Phase 3, confirmed correct rendering (sticky column, name truncation) |
 | Best-slot ranking: most Yes desc, fewest No as tiebreak; highlight ALL ties, never arbitrarily pick one | Matches the roadmap's literal "most Yes, fewest No" wording; picking only one slot on a tie would be misleadingly precise given the data | ✓ Good — Phase 3 |
-| No admin-only visual distinction on the results grid yet (identical to participant view) | Editing/deleting is Phase 4's scope; nothing to distinguish yet — avoids premature UI for controls that don't exist | ✓ Good — Phase 3; revisit once Phase 4 adds admin-only controls |
+| No admin-only visual distinction on the results grid yet (identical to participant view) | Editing/deleting is Phase 4's scope; nothing to distinguish yet — avoids premature UI for controls that don't exist | ✓ Good — Phase 3; Phase 4 added the "Remove" control and edit-page link, gated to the admin route only |
+| Removing a slot with existing responses cascades (deletes only that slot's responses); adding a new slot to a live poll shows "—" for existing participants; poll_type is locked after creation; deletion (response or poll) is immediate/permanent with a native `confirm()` gate, no soft-delete | No accounts/auth in scope, so a lightweight `confirm()` dialog is the safety net, not a heavier type-to-confirm pattern; matches the tool's small-group, low-stakes scale | ✓ Good — Phase 4, confirmed working (all 3 double-submit guards + cascade-delete row counts) |
+| Destructive-red (`#DC2626`) escalated to real destructive controls, with two visual weights: outline for per-response removal, solid fill for whole-poll deletion | First phase to actually use the destructive token for real data-loss actions (previously only "No" pill semantics); differentiating severity visually reinforces the `confirm()` dialog's warning | ✓ Good — Phase 4 |
+| "Edit poll" link added to the admin results page | Manual testing caught a real navigation gap: the `/edit` route worked but nothing in the UI linked to it. No UI-SPEC/plan had specified this entry point — a genuine spec gap, not an execution bug | ✓ Good — Phase 4, fixed and confirmed working |
 
 ## Evolution
 
@@ -81,4 +100,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-08-25 after Phase 3*
+*Last updated: 2026-08-25 after Phase 4 (v1 complete)*

@@ -21,7 +21,10 @@
   </div>
 
   <p class="copy-fallback" hidden>Couldn't copy automatically &mdash; select the link text above and copy it manually.</p>
+
+  <a class="btn-secondary" href="{{.EditPath}}">Edit poll</a>
 </div>
 <script src="/static/copy.js"></script>
 {{template "results" .Results}}
+<script src="/static/admin.js" defer></script>
 {{end}}

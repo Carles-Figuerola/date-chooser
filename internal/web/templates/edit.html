@@ -1,0 +1,122 @@
+{{define "content"}}
+<div class="card">
+  <h1 class="display">Edit poll</h1>
+
+  <div id="form-banner" class="banner-error"{{if not .BannerError}} hidden{{end}}>{{.BannerError}}</div>
+
+  <form method="post" action="/poll/{{.ParticipantToken}}/admin/{{.AdminToken}}/edit" class="form" id="edit-poll-form">
+    <div class="form-section">
+      <div class="field">
+        <label for="title" class="label">Poll title</label>
+        <input type="text" id="title" name="title" maxlength="200" required placeholder="Team sync" value="{{.Title}}">
+        {{if .TitleError}}<p class="field-error">{{.TitleError}}</p>{{end}}
+      </div>
+
+      <div class="field">
+        <label for="description" class="label">Description (optional)</label>
+        <textarea id="description" name="description" maxlength="2000" rows="3">{{.Description}}</textarea>
+      </div>
+
+      <div class="field">
+        <label for="organizer_name" class="label">Your name (optional)</label>
+        <input type="text" id="organizer_name" name="organizer_name" maxlength="100" value="{{.OrganizerName}}">
+      </div>
+
+      <fieldset class="field toggle-group toggle-disabled" id="poll-type-toggle">
+        <legend class="label">Slot type</legend>
+        <label class="toggle-option{{if eq .PollType "all_day"}} toggle-active{{end}}">
+          <input type="radio" name="poll_type" value="all_day"{{if eq .PollType "all_day"}} checked{{end}} disabled>
+          <span>All-day</span>
+        </label>
+        <label class="toggle-option{{if eq .PollType "date_time"}} toggle-active{{end}}">
+          <input type="radio" name="poll_type" value="date_time"{{if eq .PollType "date_time"}} checked{{end}} disabled>
+          <span>Specific time</span>
+        </label>
+      </fieldset>
+    </div>
+
+    <div class="form-section">
+      <h2 class="heading">Slots</h2>
+      <label class="label">Slots</label>
+
+      <div id="slots-list" data-mode="{{.PollType}}">
+        {{range $slot := .Slots}}
+        <div class="slot-row" data-slot-row data-response-count="{{$slot.ResponseCount}}">
+          <input type="hidden" name="slot_id" value="{{$slot.ID}}" data-slot-id>
+          <input type="hidden" name="slot_removed" value="" data-slot-removed>
+          <div class="slot-row-fields" data-slot-row-fields>
+            {{if eq $.PollType "date_time"}}
+            <input type="date" name="slot_date" value="{{$slot.Date}}" class="slot-date-full" aria-label="Slot date">
+            <div class="slot-time-range">
+              <input type="time" name="slot_start_time" value="{{$slot.StartTime}}" step="900" aria-label="Start time">
+              <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+              <input type="time" name="slot_end_time" value="{{$slot.EndTime}}" step="900" aria-label="End time">
+            </div>
+            {{else}}
+            <input type="date" name="slot_date" value="{{$slot.Date}}" aria-label="Slot date">
+            {{end}}
+          </div>
+          <button type="button" class="btn-remove" data-remove-slot{{if eq (len $.Slots) 1}} hidden disabled{{end}}>Remove slot</button>
+          <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
+          {{if $slot.Error}}<p class="field-error">{{$slot.Error}}</p>{{end}}
+          <p class="field-error slot-removal-inline-warning" data-slot-warning hidden>This slot has {{$slot.ResponseCount}} response(s). Removing it will permanently delete those responses.</p>
+        </div>
+        {{end}}
+      </div>
+
+      <button type="button" class="btn-secondary" id="add-slot-btn">Add another slot</button>
+    </div>
+
+    <div id="slot-removal-aggregate-warning" class="banner-error" hidden>
+      <p data-aggregate-warning-text></p>
+      <label class="body">
+        <input type="checkbox" id="confirm-slot-removal" name="confirm_slot_removal" value="1">
+        I understand this will permanently delete these responses.
+      </label>
+    </div>
+
+    <button type="submit" class="btn-primary" id="submit-btn">Save changes</button>
+  </form>
+</div>
+
+<div class="card danger-zone">
+  <h2 class="heading">Danger zone</h2>
+  <p class="body">Deleting this poll removes it and all responses permanently. This cannot be undone.</p>
+  <form method="post" action="/poll/{{.ParticipantToken}}/admin/{{.AdminToken}}/delete" class="delete-poll-form" data-poll-title="{{.Title}}" data-response-count="{{.ResponseCount}}">
+    <button type="submit" class="btn-danger">Delete poll</button>
+  </form>
+</div>
+
+<template id="slot-row-template-all_day">
+  <div class="slot-row" data-slot-row data-response-count="0">
+    <input type="hidden" name="slot_id" value="" data-slot-id>
+    <input type="hidden" name="slot_removed" value="" data-slot-removed>
+    <div class="slot-row-fields" data-slot-row-fields>
+      <input type="date" name="slot_date" aria-label="Slot date">
+    </div>
+    <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
+    <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
+    <p class="field-error slot-removal-inline-warning" data-slot-warning hidden></p>
+  </div>
+</template>
+
+<template id="slot-row-template-date_time">
+  <div class="slot-row" data-slot-row data-response-count="0">
+    <input type="hidden" name="slot_id" value="" data-slot-id>
+    <input type="hidden" name="slot_removed" value="" data-slot-removed>
+    <div class="slot-row-fields" data-slot-row-fields>
+      <input type="date" name="slot_date" class="slot-date-full" aria-label="Slot date">
+      <div class="slot-time-range">
+        <input type="time" name="slot_start_time" step="900" aria-label="Start time">
+        <span class="slot-time-arrow" aria-hidden="true">&rarr;</span>
+        <input type="time" name="slot_end_time" step="900" aria-label="End time">
+      </div>
+    </div>
+    <button type="button" class="btn-remove" data-remove-slot>Remove slot</button>
+    <button type="button" class="btn-secondary" data-undo-slot hidden>Undo</button>
+    <p class="field-error slot-removal-inline-warning" data-slot-warning hidden></p>
+  </div>
+</template>
+
+<script src="/static/edit.js" defer></script>
+{{end}}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -110,6 +111,10 @@ func (s *Server) Routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleCreateForm)
 	mux.HandleFunc("POST /polls", s.handleCreatePoll)
 	mux.HandleFunc("GET /poll/{ptoken}/admin/{atoken}", s.handleLinksPage)
+	mux.HandleFunc("GET /poll/{ptoken}/admin/{atoken}/edit", s.handleEditForm)
+	mux.HandleFunc("POST /poll/{ptoken}/admin/{atoken}/edit", s.handleUpdatePoll)
+	mux.HandleFunc("POST /poll/{ptoken}/admin/{atoken}/responses/{participantID}/delete", s.handleDeleteResponse)
+	mux.HandleFunc("POST /poll/{ptoken}/admin/{atoken}/delete", s.handleDeletePoll)
 	mux.HandleFunc("GET /poll/{ptoken}", s.handleVoteForm)
 	mux.HandleFunc("POST /poll/{ptoken}/responses", s.handleSubmitResponse)
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
@@ -348,11 +353,13 @@ func (s *Server) handleLinksPage(w http.ResponseWriter, r *http.Request) {
 	}
 	participantPath := "/poll/" + poll.ParticipantToken
 	adminPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+	editPath := adminPath + "/edit"
 
 	data := struct {
 		Poll            *store.Poll
 		ParticipantPath string
 		AdminPath       string
+		EditPath        string
 		ParticipantURL  string
 		AdminURL        string
 		Results         resultsGridView
@@ -360,14 +367,433 @@ func (s *Server) handleLinksPage(w http.ResponseWriter, r *http.Request) {
 		Poll:            poll,
 		ParticipantPath: participantPath,
 		AdminPath:       adminPath,
+		EditPath:        editPath,
 		ParticipantURL:  scheme + "://" + r.Host + participantPath,
 		AdminURL:        scheme + "://" + r.Host + adminPath,
-		Results:         buildResultsGridView(poll.PollType, slots, resultParticipants, resultAnswers),
+		Results:         buildResultsGridView(poll.PollType, slots, resultParticipants, resultAnswers, true, poll.Title, poll.ParticipantToken, poll.AdminToken),
 	}
 
 	if err := s.tmpl.links.ExecuteTemplate(w, "layout", data); err != nil {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 	}
+}
+
+// confirmSlotRemovalCopy is the exact UI-SPEC banner shown when a save is
+// attempted while a slot with responses is marked for removal but the
+// confirmation flag is absent (server-side defense in depth, T-04-04).
+const confirmSlotRemovalCopy = "Confirm you understand response data will be deleted before saving."
+
+// editFormView is the data passed to edit.html for both the initial GET
+// render (pre-filled from the live poll) and any validation-failure
+// re-render (HTTP 200, values preserved) of
+// GET/POST /poll/{ptoken}/admin/{atoken}/edit. It mirrors createFormView's
+// shape, plus the poll's own tokens (needed for the form action URL and the
+// disabled poll-type toggle) — the poll-type value itself is always the
+// poll's existing, immutable type (T-04 CONTEXT: locked after creation).
+type editFormView struct {
+	ParticipantToken string
+	AdminToken       string
+	Title            string
+	Description      string
+	OrganizerName    string
+	PollType         string // "all_day" or "date_time"; never user-changeable
+	Slots            []editSlotView
+	BannerError      string
+	TitleError       string
+
+	// ResponseCount (Plan 04-03) is the poll's total participant/response
+	// count, threaded into the danger-zone's confirm() copy so it always
+	// names the real data about to be permanently deleted (04-UI-SPEC.md).
+	ResponseCount int
+}
+
+// editSlotView is one rendered slot row on the edit form: the create-form
+// slot fields (Date/StartTime/EndTime/Error) plus the slot's persisted ID
+// (empty/zero for a newly-added, not-yet-saved row) and its ResponseCount,
+// which drives both the client-side removal warning (Task 3) and the
+// server-side removal-confirmation gate (Task 2) — both read the same count
+// so client and server agree on which removals are destructive.
+type editSlotView struct {
+	ID            int64
+	Date          string
+	StartTime     string
+	EndTime       string
+	Error         string
+	ResponseCount int
+}
+
+// newEditFormView builds the pre-filled edit-form view for a GET render from
+// the poll's current row plus its persisted slots and (optionally) their
+// response counts. counts may be nil when response counts are not yet known
+// (Task 1 wiring, before SlotResponseCounts is called).
+func newEditFormView(poll *store.Poll, slots []store.Slot, counts map[int64]int, responseCount int) editFormView {
+	return editFormView{
+		ParticipantToken: poll.ParticipantToken,
+		AdminToken:       poll.AdminToken,
+		Title:            poll.Title,
+		Description:      poll.Description,
+		OrganizerName:    poll.OrganizerName,
+		PollType:         poll.PollType,
+		Slots:            editSlotViewsFromSlots(poll.PollType, slots, counts),
+		ResponseCount:    responseCount,
+	}
+}
+
+// editSlotViewsFromSlots maps persisted slots into their edit-form row
+// views, splitting each slot's StartsAt/EndsAt back into the separate
+// Date/StartTime/EndTime fields the edit form (and parseSlots) expect.
+func editSlotViewsFromSlots(pollType string, slots []store.Slot, counts map[int64]int) []editSlotView {
+	views := make([]editSlotView, len(slots))
+	for i, sl := range slots {
+		v := editSlotView{ID: sl.ID}
+		if counts != nil {
+			v.ResponseCount = counts[sl.ID]
+		}
+		switch pollType {
+		case "date_time":
+			if len(sl.StartsAt) >= len(dateTimeLayout) {
+				v.Date = sl.StartsAt[:len(dateOnlyLayout)]
+				v.StartTime = sl.StartsAt[len(dateOnlyLayout)+1:]
+			}
+			if sl.EndsAt != nil && len(*sl.EndsAt) >= len(dateTimeLayout) {
+				v.EndTime = (*sl.EndsAt)[len(dateOnlyLayout)+1:]
+			}
+		default: // all_day
+			v.Date = sl.StartsAt
+		}
+		views[i] = v
+	}
+	return views
+}
+
+// renderEditForm executes edit.html with the given view. It is used for both
+// the fresh GET render and any validation-failure re-render (which must be
+// HTTP 200, not a redirect, matching the create-form error contract).
+func (s *Server) renderEditForm(w http.ResponseWriter, view editFormView) {
+	if err := s.tmpl.edit.ExecuteTemplate(w, "layout", view); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) handleEditForm(w http.ResponseWriter, r *http.Request) {
+	ptoken := r.PathValue("ptoken")
+	atoken := r.PathValue("atoken")
+
+	poll, slots, err := s.store.PollByTokens(r.Context(), ptoken, atoken)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderNotFound(w)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	counts, err := s.store.SlotResponseCounts(r.Context(), poll.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	// Danger-zone response count: the same participant count the edit page
+	// otherwise has no reason to compute, fetched here solely so the
+	// delete-poll confirm() copy names the real data (04-UI-SPEC.md).
+	participants, _, err := s.store.ResponsesByPollID(r.Context(), poll.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	s.renderEditForm(w, newEditFormView(poll, slots, counts, len(participants)))
+}
+
+// parseEditSlots classifies the edit form's submitted slot rows into: the
+// slotView rows to re-render, the existing slots to update in place (keep),
+// the brand-new slots to append (add), and the full set of existing slot
+// IDs to remove — either explicitly marked via the slot_removed flag, or
+// implicitly removed because their row was dropped from the DOM entirely
+// (Task 3's immediate-removal behavior for zero-response rows). Fields are
+// parallel arrays aligned by index, mirroring parseSlots' slot_date /
+// slot_start_time / slot_end_time contract plus two edit-only fields:
+// slot_id (empty for a newly-added row) and slot_removed ("1" when marked).
+func parseEditSlots(pollType string, form map[string][]string, existingIDs map[int64]bool) (views []editSlotView, keep []store.SlotEdit, add []store.NewSlotInput, removeIDs []int64, hasRowError bool) {
+	slotIDs := form["slot_id"]
+	removedFlags := form["slot_removed"]
+	dates := form["slot_date"]
+	startTimes := form["slot_start_time"]
+	endTimes := form["slot_end_time"]
+
+	n := len(dates)
+	if len(slotIDs) > n {
+		n = len(slotIDs)
+	}
+
+	presentIDs := make(map[int64]bool)
+
+	for i := 0; i < n; i++ {
+		var idStr, date, startTime, endTime, removedFlag string
+		if i < len(slotIDs) {
+			idStr = slotIDs[i]
+		}
+		if i < len(dates) {
+			date = dates[i]
+		}
+		if i < len(startTimes) {
+			startTime = startTimes[i]
+		}
+		if i < len(endTimes) {
+			endTime = endTimes[i]
+		}
+		if i < len(removedFlags) {
+			removedFlag = removedFlags[i]
+		}
+		removed := removedFlag == "1"
+
+		var slotID int64
+		hasID := false
+		if idStr != "" {
+			if parsed, err := strconv.ParseInt(idStr, 10, 64); err == nil {
+				slotID = parsed
+				hasID = true
+				presentIDs[slotID] = true
+			}
+		}
+
+		if removed && hasID {
+			removeIDs = append(removeIDs, slotID)
+			views = append(views, editSlotView{ID: slotID, Date: date, StartTime: startTime, EndTime: endTime})
+			continue
+		}
+
+		if date == "" && startTime == "" && endTime == "" {
+			// Entirely blank row — only possible for a new, unfilled "Add
+			// another slot" row. Skip it, same as parseSlots does, so a
+			// phantom empty slot is never persisted or re-shown.
+			continue
+		}
+
+		row := editSlotView{ID: slotID, Date: date, StartTime: startTime, EndTime: endTime}
+		var start, end string
+		valid := true
+		if pollType == "date_time" {
+			if date != "" && startTime != "" {
+				start = date + "T" + startTime
+			}
+			if date != "" && endTime != "" {
+				end = date + "T" + endTime
+			}
+			valid = isValidDateTimeRange(start, end)
+		} else {
+			start = date
+			valid = date != ""
+		}
+
+		if !valid {
+			row.Error = rowErrorCopy
+			hasRowError = true
+			views = append(views, row)
+			continue
+		}
+		views = append(views, row)
+
+		var endCopy *string
+		if pollType == "date_time" && end != "" {
+			e := end
+			endCopy = &e
+		}
+		if hasID {
+			keep = append(keep, store.SlotEdit{ID: slotID, StartsAt: start, EndsAt: endCopy})
+		} else {
+			add = append(add, store.NewSlotInput{StartsAt: start, EndsAt: endCopy})
+		}
+	}
+
+	// Any existing slot whose ID never appeared in the submission at all —
+	// its row was removed from the DOM client-side (Task 3's zero-response
+	// immediate-removal behavior) — is implicitly removed too.
+	for id := range existingIDs {
+		if !presentIDs[id] {
+			removeIDs = append(removeIDs, id)
+		}
+	}
+
+	if len(views) == 0 {
+		views = []editSlotView{{}}
+	}
+
+	return views, keep, add, removeIDs, hasRowError
+}
+
+func (s *Server) handleUpdatePoll(w http.ResponseWriter, r *http.Request) {
+	ptoken := r.PathValue("ptoken")
+	atoken := r.PathValue("atoken")
+
+	poll, slots, err := s.store.PollByTokens(r.Context(), ptoken, atoken)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderNotFound(w)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxFormBytes)
+	if err := r.ParseForm(); err != nil {
+		if strings.Contains(err.Error(), "too large") {
+			http.Error(w, "Request body too large.", http.StatusRequestEntityTooLarge)
+			return
+		}
+		http.Error(w, bannerErrorCopy, http.StatusBadRequest)
+		return
+	}
+
+	title := strings.TrimSpace(r.FormValue("title"))
+	description := r.FormValue("description")
+	organizerName := r.FormValue("organizer_name")
+
+	existingIDs := make(map[int64]bool, len(slots))
+	for _, sl := range slots {
+		existingIDs[sl.ID] = true
+	}
+
+	slotViews, keep, add, removeIDs, rowErr := parseEditSlots(poll.PollType, r.Form, existingIDs)
+
+	// Danger-zone response count for the re-rendered view (same as the GET
+	// path) — kept accurate even on a validation-failure re-render, since the
+	// danger zone reflects live poll data, not the in-progress form edit.
+	participants, _, err := s.store.ResponsesByPollID(r.Context(), poll.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	view := editFormView{
+		ParticipantToken: poll.ParticipantToken,
+		AdminToken:       poll.AdminToken,
+		Title:            title,
+		Description:      description,
+		OrganizerName:    organizerName,
+		PollType:         poll.PollType, // immutable — never taken from the form
+		Slots:            slotViews,
+		ResponseCount:    len(participants),
+	}
+
+	hasError := rowErr
+	if title == "" {
+		view.TitleError = "Poll title is required."
+		hasError = true
+	}
+
+	counts, err := s.store.SlotResponseCounts(r.Context(), poll.ID)
+	if err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	for i := range view.Slots {
+		view.Slots[i].ResponseCount = counts[view.Slots[i].ID]
+	}
+
+	if hasError {
+		view.BannerError = bannerErrorCopy
+		s.renderEditForm(w, view)
+		return
+	}
+
+	// Server-side defense in depth (T-04-04): a destructive removal (a
+	// removeID with at least one response) cannot be saved without the
+	// confirmation flag, mirroring the client-side disabled-button gate.
+	destructive := false
+	for _, id := range removeIDs {
+		if counts[id] > 0 {
+			destructive = true
+			break
+		}
+	}
+	if destructive && r.FormValue("confirm_slot_removal") == "" {
+		view.BannerError = confirmSlotRemovalCopy
+		s.renderEditForm(w, view)
+		return
+	}
+
+	if err := s.store.UpdatePollDetails(r.Context(), poll.ID, title, description, organizerName); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+	if err := s.store.UpdatePollSlots(r.Context(), poll.ID, keep, add, removeIDs); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/poll/"+ptoken+"/admin/"+atoken, http.StatusSeeOther)
+}
+
+// handleDeleteResponse deletes a single participant's response (Plan
+// 04-02, ADM-03). It resolves the poll via PollByTokens using BOTH tokens
+// from the path — a mismatched pair 404s before any delete is attempted
+// (T-04-02) — then deletes the participant scoped to that poll's ID
+// (T-04-03), so a {participantID} belonging to a different poll deletes
+// nothing. After a successful (or no-op) delete, it redirects back to the
+// admin page so the results grid recomputes tallies/best-fit from current
+// DB state, per Phase 3's always-recompute design — no client-side tally
+// math is ever needed.
+func (s *Server) handleDeleteResponse(w http.ResponseWriter, r *http.Request) {
+	ptoken := r.PathValue("ptoken")
+	atoken := r.PathValue("atoken")
+
+	poll, _, err := s.store.PollByTokens(r.Context(), ptoken, atoken)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderNotFound(w)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	participantID, err := strconv.ParseInt(r.PathValue("participantID"), 10, 64)
+	if err != nil {
+		http.Error(w, "invalid participant id", http.StatusBadRequest)
+		return
+	}
+
+	if err := s.store.DeleteParticipant(r.Context(), poll.ID, participantID); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/poll/"+ptoken+"/admin/"+atoken, http.StatusSeeOther)
+}
+
+// handleDeletePoll deletes the entire poll (Plan 04-03, ADM-04) — the last
+// and highest-stakes admin action in the app. Exactly like
+// handleDeleteResponse, it resolves the poll via PollByTokens using BOTH
+// tokens from the path first (a mismatched pair 404s before any delete is
+// attempted, T-04-02), then deletes by the resolved poll.ID only — never a
+// client-supplied id. After deletion, the redirect target
+// (/poll/{ptoken}) itself 404s, because the poll (and thus both tokens) no
+// longer resolve to anything — no tombstone state is added, per
+// 04-CONTEXT.md's "reuse the generic invalid-link 404" decision.
+func (s *Server) handleDeletePoll(w http.ResponseWriter, r *http.Request) {
+	ptoken := r.PathValue("ptoken")
+	atoken := r.PathValue("atoken")
+
+	poll, _, err := s.store.PollByTokens(r.Context(), ptoken, atoken)
+	if err != nil {
+		if errors.Is(err, store.ErrNotFound) {
+			s.renderNotFound(w)
+			return
+		}
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.store.DeletePoll(r.Context(), poll.ID); err != nil {
+		http.Error(w, "internal error", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/poll/"+ptoken, http.StatusSeeOther)
 }
 
 // voteFormView is the data passed to vote.html for both the initial GET
@@ -404,11 +830,26 @@ type resultsGridView struct {
 	Participants []resultsParticipant
 	Rows         []resultsRow
 	Comments     []resultsComment
+
+	// Title, IsAdmin, ParticipantToken, and AdminToken (Plan 04-02) drive the
+	// admin-only "Remove" response-deletion control: IsAdmin gates whether
+	// the control renders at all (the participant route always passes
+	// false), and Title/ParticipantToken/AdminToken give the shared partial
+	// what it needs to build the delete-route URL and the confirm() copy
+	// without needing the caller's whole page-level data struct.
+	Title            string
+	IsAdmin          bool
+	ParticipantToken string
+	AdminToken       string
 }
 
-// resultsParticipant is one grid column header. Only DisplayName is ever
-// exposed here — never CookieToken (threat T-03-02).
+// resultsParticipant is one grid column header. Only DisplayName and the
+// participant's own store ID are ever exposed here — never CookieToken
+// (threat T-03-02). ID is the participant's row id (not the cookie_token),
+// safe to render, and needed by the admin route's per-participant "Remove"
+// delete-form action URL (T-04-06).
 type resultsParticipant struct {
+	ID          int64
 	DisplayName string
 }
 
@@ -442,15 +883,23 @@ type resultsComment struct {
 // per participant (in the given order), one row per slot with per-cell
 // answers and Yes/No/Maybe tallies, best-slot ranking via rankBestSlots, and
 // the comments list (non-empty comments only, in participant order).
-func buildResultsGridView(pollType string, slots []store.Slot, participants []store.Participant, answers map[int64]map[int64]string) resultsGridView {
+// isAdmin, title, ptoken, and atoken (Plan 04-02) are threaded straight into
+// the view so the shared "results" partial can render (or omit, for the
+// participant route) the admin-only "Remove" response-deletion control
+// without needing any other page-level data.
+func buildResultsGridView(pollType string, slots []store.Slot, participants []store.Participant, answers map[int64]map[int64]string, isAdmin bool, title, ptoken, atoken string) resultsGridView {
 	view := resultsGridView{
-		HasResponses: len(participants) > 0,
-		Participants: make([]resultsParticipant, len(participants)),
-		Rows:         make([]resultsRow, len(slots)),
+		HasResponses:     len(participants) > 0,
+		Participants:     make([]resultsParticipant, len(participants)),
+		Rows:             make([]resultsRow, len(slots)),
+		Title:            title,
+		IsAdmin:          isAdmin,
+		ParticipantToken: ptoken,
+		AdminToken:       atoken,
 	}
 
 	for i, p := range participants {
-		view.Participants[i] = resultsParticipant{DisplayName: p.DisplayName}
+		view.Participants[i] = resultsParticipant{ID: p.ID, DisplayName: p.DisplayName}
 		if comment := strings.TrimSpace(p.Comment); comment != "" {
 			view.Comments = append(view.Comments, resultsComment{DisplayName: p.DisplayName, Comment: p.Comment})
 		}
@@ -600,7 +1049,7 @@ func (s *Server) handleVoteForm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "internal error", http.StatusInternalServerError)
 		return
 	}
-	view.Results = buildResultsGridView(poll.PollType, slots, resultParticipants, resultAnswers)
+	view.Results = buildResultsGridView(poll.PollType, slots, resultParticipants, resultAnswers, false, poll.Title, "", "")
 
 	s.renderVoteForm(w, view)
 }

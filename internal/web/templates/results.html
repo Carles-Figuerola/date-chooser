@@ -10,6 +10,18 @@
           <th title="{{.DisplayName}}">{{.DisplayName}}</th>
           {{end}}
         </tr>
+        {{if and $.IsAdmin $.HasResponses}}
+        <tr class="results-admin-row">
+          <th class="results-label-col"></th>
+          {{range .Participants}}
+          <th>
+            <form method="post" action="/poll/{{$.ParticipantToken}}/admin/{{$.AdminToken}}/responses/{{.ID}}/delete" class="results-admin-remove" data-participant-name="{{.DisplayName}}" data-poll-title="{{$.Title}}">
+              <button type="submit" class="btn-remove btn-remove-response" aria-label="Remove {{.DisplayName}}'s response">Remove</button>
+            </form>
+          </th>
+          {{end}}
+        </tr>
+        {{end}}
       </thead>
       <tbody>
         {{$hasResponses := .HasResponses}}

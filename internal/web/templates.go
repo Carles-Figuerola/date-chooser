@@ -23,6 +23,7 @@ type pageTemplates struct {
 	links    *template.Template
 	vote     *template.Template
 	notfound *template.Template
+	edit     *template.Template
 }
 
 // parseTemplates parses every embedded template once at server startup.
@@ -43,5 +44,11 @@ func parseTemplates() (*pageTemplates, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &pageTemplates{create: create, links: links, vote: vote, notfound: notfound}, nil
+	// edit.html defines its own "content", so it must not share a parse set
+	// with any other page (every page defines "content").
+	edit, err := template.ParseFS(templateFS, "templates/layout.html", "templates/edit.html")
+	if err != nil {
+		return nil, err
+	}
+	return &pageTemplates{create: create, links: links, vote: vote, notfound: notfound, edit: edit}, nil
 }

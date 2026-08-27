@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -173,6 +174,11 @@ func TestLinksPage_RendersBothLabelsAndAbsoluteURLs(t *testing.T) {
 	}
 	if !strings.Contains(bodyStr, wantAdminURL) {
 		t.Fatalf("expected absolute admin URL %q in body, got: %s", wantAdminURL, bodyStr)
+	}
+
+	wantEditHref := `href="` + loc + `/edit"`
+	if !strings.Contains(bodyStr, wantEditHref) {
+		t.Fatalf("expected an %q link to the edit page in body, got: %s", wantEditHref, bodyStr)
 	}
 }
 
@@ -850,7 +856,7 @@ func TestResultsView_CommentsPopulated(t *testing.T) {
 		{ID: 2, DisplayName: "Bob", Comment: "   "},
 	}
 
-	view := buildResultsGridView("all_day", nil, participants, map[int64]map[int64]string{})
+	view := buildResultsGridView("all_day", nil, participants, map[int64]map[int64]string{}, false, "", "", "")
 
 	if len(view.Comments) != 1 {
 		t.Fatalf("expected exactly 1 comment, got %d: %v", len(view.Comments), view.Comments)
@@ -866,7 +872,7 @@ func TestResultsView_CommentsEmpty(t *testing.T) {
 		{ID: 2, DisplayName: "Bob", Comment: "   "},
 	}
 
-	view := buildResultsGridView("all_day", nil, participants, map[int64]map[int64]string{})
+	view := buildResultsGridView("all_day", nil, participants, map[int64]map[int64]string{}, false, "", "", "")
 
 	if len(view.Comments) != 0 {
 		t.Fatalf("expected zero comments, got %v", view.Comments)
@@ -1005,7 +1011,7 @@ func TestResultsView_Tally(t *testing.T) {
 		20: {1: "yes", 2: "maybe"},
 	}
 
-	view := buildResultsGridView("all_day", slots, participants, answers)
+	view := buildResultsGridView("all_day", slots, participants, answers, false, "", "", "")
 
 	if len(view.Rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(view.Rows))
@@ -1064,7 +1070,7 @@ func TestResultsView_MissingCell(t *testing.T) {
 	participants := []store.Participant{{ID: 10, DisplayName: "Alice"}}
 	answers := map[int64]map[int64]string{10: {1: "yes"}}
 
-	view := buildResultsGridView("all_day", slots, participants, answers)
+	view := buildResultsGridView("all_day", slots, participants, answers, false, "", "", "")
 
 	if view.Rows[1].Cells[0].Answer != "" {
 		t.Fatalf("expected empty Answer for a missing cell, got %q", view.Rows[1].Cells[0].Answer)
@@ -1074,7 +1080,7 @@ func TestResultsView_MissingCell(t *testing.T) {
 func TestResultsView_ZeroParticipants_HasResponsesFalse(t *testing.T) {
 	slots := []store.Slot{{ID: 1}}
 
-	view := buildResultsGridView("all_day", slots, nil, nil)
+	view := buildResultsGridView("all_day", slots, nil, nil, false, "", "", "")
 
 	if view.HasResponses {
 		t.Fatal("expected HasResponses false with zero participants")
@@ -1186,16 +1192,28 @@ func TestResults_AdminRouteParity(t *testing.T) {
 		t.Fatalf("expected a Best fit badge in the admin route's results grid, got: %s", bodyStr)
 	}
 	// The admin token legitimately appears earlier in the body (the admin
-	// link box itself). Scope the no-leak check to the results grid markup
-	// only, per T-03-02: the grid must expose no data beyond what the
-	// participant route shows.
+	// link box itself) AND, as of Plan 04-02, inside the results grid's
+	// admin-controls row — each per-participant "Remove" control's delete
+	// form action URL necessarily embeds it (T-04-01: authorization is
+	// possession of the admin token in the URL). That supersedes Phase 3's
+	// blanket "grid never contains the admin token" assumption. What must
+	// still hold, per T-03-02/T-04-06, is that no participant's COOKIE token
+	// is ever exposed (guaranteed structurally: resultsParticipant only ever
+	// carries ID/DisplayName, never CookieToken) and that the admin token
+	// appears ONLY inside the admin-controls row, never attached to the
+	// participant-data cells above it.
 	gridIdx := strings.Index(bodyStr, `class="results-section"`)
 	if gridIdx == -1 {
 		t.Fatalf("expected a results-section in the admin body, got: %s", bodyStr)
 	}
 	gridStr := bodyStr[gridIdx:]
-	if strings.Contains(gridStr, poll.AdminToken) {
-		t.Fatalf("admin token leaked into the results grid markup itself, got: %s", gridStr)
+	adminRowIdx := strings.Index(gridStr, `class="results-admin-row"`)
+	if adminRowIdx == -1 {
+		t.Fatalf("expected a results-admin-row in the admin route's grid, got: %s", gridStr)
+	}
+	beforeAdminRow := gridStr[:adminRowIdx]
+	if strings.Contains(beforeAdminRow, poll.AdminToken) {
+		t.Fatalf("admin token leaked into the results grid outside the admin-controls row, got: %s", beforeAdminRow)
 	}
 }
 
@@ -1226,5 +1244,749 @@ func TestCreatePoll_OversizedBody_RejectedWithoutPanic(t *testing.T) {
 	}
 	if pollCount != 0 {
 		t.Fatalf("expected no poll row for oversized-body submit, got %d", pollCount)
+	}
+}
+
+// createEditPollWithSlots creates a poll with n all_day slots via the store
+// directly and returns the poll and its persisted slots (ordered by
+// position) — the seed helper for edit-route tests (mirrors
+// createVotePollWithSlots).
+func createEditPollWithSlots(t *testing.T, st *store.Store, title, ptoken, atoken string, n int) (*store.Poll, []store.Slot) {
+	t.Helper()
+	ctx := context.Background()
+	slots := make([]store.NewSlotInput, n)
+	for i := range slots {
+		slots[i] = store.NewSlotInput{StartsAt: fmt.Sprintf("2026-09-%02d", i+1)}
+	}
+	poll, err := st.CreatePoll(ctx, store.NewPollInput{
+		Title:    title,
+		PollType: "all_day",
+		Slots:    slots,
+	}, ptoken, atoken)
+	if err != nil {
+		t.Fatalf("CreatePoll() error: %v", err)
+	}
+	_, persisted, err := st.PollByParticipantToken(ctx, poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("PollByParticipantToken() error: %v", err)
+	}
+	return poll, persisted
+}
+
+func TestEdit_TitleDescription_EndToEnd(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createEditPollWithSlots(t, st, "Original Title", "ptok-edit-e2e", "atok-edit-e2e", 1)
+
+	editPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/edit"
+
+	getResp, err := http.Get(ts.URL + editPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", editPath, err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 for GET %s, got %d", editPath, getResp.StatusCode)
+	}
+	getBody, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading GET body: %v", err)
+	}
+	getBodyStr := string(getBody)
+
+	if !strings.Contains(getBodyStr, "Edit poll") {
+		t.Fatalf("expected 'Edit poll' in body, got: %s", getBodyStr)
+	}
+	if !strings.Contains(getBodyStr, "Save changes") {
+		t.Fatalf("expected 'Save changes' in body, got: %s", getBodyStr)
+	}
+	if !strings.Contains(getBodyStr, `value="Original Title"`) {
+		t.Fatalf("expected the poll's current title pre-filled, got: %s", getBodyStr)
+	}
+	if !strings.Contains(getBodyStr, `<input type="radio" name="poll_type" value="all_day" checked disabled>`) {
+		t.Fatalf("expected the poll-type radio to carry the disabled attribute, got: %s", getBodyStr)
+	}
+
+	form := url.Values{}
+	form.Set("title", "Updated Title")
+	form.Set("description", "Updated description")
+	form.Set("organizer_name", "")
+	// Resend the existing slot row unchanged, as the real form's hidden
+	// slot_id/slot_date inputs always would — a row's ID missing from the
+	// submission is treated as removed (Task 2), so this must be present
+	// for a title-only edit to leave the slot list untouched.
+	form.Add("slot_id", fmt.Sprintf("%d", slots[0].ID))
+	form.Add("slot_date", slots[0].StartsAt)
+
+	postResp, err := noRedirectClient().PostForm(ts.URL+editPath, form)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", editPath, err)
+	}
+	defer postResp.Body.Close()
+
+	if postResp.StatusCode != http.StatusSeeOther {
+		b, _ := io.ReadAll(postResp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", postResp.StatusCode, b)
+	}
+	wantLocation := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+	if loc := postResp.Header.Get("Location"); loc != wantLocation {
+		t.Fatalf("expected Location %q, got %q", wantLocation, loc)
+	}
+
+	participantResp, err := http.Get(ts.URL + "/poll/" + poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("GET participant page error: %v", err)
+	}
+	defer participantResp.Body.Close()
+	participantBody, err := io.ReadAll(participantResp.Body)
+	if err != nil {
+		t.Fatalf("reading participant body: %v", err)
+	}
+	if !strings.Contains(string(participantBody), "Updated Title") {
+		t.Fatalf("expected updated title on participant page, got: %s", participantBody)
+	}
+}
+
+func TestEdit_MismatchedTokens_NotFound(t *testing.T) {
+	ts, st := newTestServer(t)
+	pollA, _ := createEditPollWithSlots(t, st, "Poll A", "ptok-mismatch-a", "atok-mismatch-a", 1)
+	pollB, _ := createEditPollWithSlots(t, st, "Poll B", "ptok-mismatch-b", "atok-mismatch-b", 1)
+
+	// Cross the tokens: pollA's participant token with pollB's admin token.
+	crossedPath := "/poll/" + pollA.ParticipantToken + "/admin/" + pollB.AdminToken + "/edit"
+
+	getResp, err := http.Get(ts.URL + crossedPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", crossedPath, err)
+	}
+	defer getResp.Body.Close()
+	if getResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for GET with mismatched tokens, got %d", getResp.StatusCode)
+	}
+
+	form := url.Values{}
+	form.Set("title", "Hijacked Title")
+	postResp, err := noRedirectClient().PostForm(ts.URL+crossedPath, form)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", crossedPath, err)
+	}
+	defer postResp.Body.Close()
+	if postResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 for POST with mismatched tokens, got %d", postResp.StatusCode)
+	}
+}
+
+// submitVote POSTs a vote-form response for the given participant name,
+// answering every slot "yes", via the real HTTP endpoint (so a real
+// participants+responses row pair is created exactly as production would).
+func submitVote(t *testing.T, ts *httptest.Server, ptoken, displayName string, slots []store.Slot) {
+	t.Helper()
+	form := url.Values{}
+	form.Set("display_name", displayName)
+	for _, sl := range slots {
+		form.Set(fmt.Sprintf("answer_%d", sl.ID), "yes")
+	}
+	resp, err := (&http.Client{}).PostForm(ts.URL+"/poll/"+ptoken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST /responses error: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 after following the vote redirect, got %d; body: %s", resp.StatusCode, body)
+	}
+}
+
+func TestEdit_SlotRemovalWithoutConfirm_RejectedNoWrite(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createEditPollWithSlots(t, st, "Removal No Confirm Poll", "ptok-removal-noconfirm", "atok-removal-noconfirm", 2)
+
+	submitVote(t, ts, poll.ParticipantToken, "Alice", slots)
+	submitVote(t, ts, poll.ParticipantToken, "Bob", slots)
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM responses"); got != 4 {
+		t.Fatalf("expected 4 responses before the edit attempt, got %d", got)
+	}
+
+	editPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/edit"
+	form := url.Values{}
+	form.Set("title", poll.Title)
+	// Only resend slots[1] — slots[0]'s row is dropped from the DOM,
+	// implicitly marking it for removal. slots[0] has responses, so this
+	// removal is destructive and requires confirm_slot_removal, which is
+	// deliberately omitted here.
+	form.Add("slot_id", fmt.Sprintf("%d", slots[1].ID))
+	form.Add("slot_date", slots[1].StartsAt)
+
+	resp, err := noRedirectClient().PostForm(ts.URL+editPath, form)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", editPath, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 re-render without confirm, got %d; body: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if !strings.Contains(string(body), confirmSlotRemovalCopy) {
+		t.Fatalf("expected confirm-removal banner copy in body, got: %s", body)
+	}
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM slots WHERE poll_id = ?", poll.ID); got != 2 {
+		t.Fatalf("expected slots unchanged (2) after rejected removal, got %d", got)
+	}
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM responses"); got != 4 {
+		t.Fatalf("expected responses unchanged (4) after rejected removal, got %d", got)
+	}
+}
+
+func TestEdit_SlotRemovalWithConfirm_Cascades(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createEditPollWithSlots(t, st, "Removal With Confirm Poll", "ptok-removal-confirm", "atok-removal-confirm", 2)
+
+	submitVote(t, ts, poll.ParticipantToken, "Alice", slots)
+	submitVote(t, ts, poll.ParticipantToken, "Bob", slots)
+
+	editPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/edit"
+	form := url.Values{}
+	form.Set("title", poll.Title)
+	form.Add("slot_id", fmt.Sprintf("%d", slots[1].ID))
+	form.Add("slot_date", slots[1].StartsAt)
+	form.Set("confirm_slot_removal", "1")
+
+	resp, err := noRedirectClient().PostForm(ts.URL+editPath, form)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", editPath, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 303 with confirm flag set, got %d; body: %s", resp.StatusCode, body)
+	}
+	wantLocation := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+	if loc := resp.Header.Get("Location"); loc != wantLocation {
+		t.Fatalf("expected Location %q, got %q", wantLocation, loc)
+	}
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM slots WHERE poll_id = ?", poll.ID); got != 1 {
+		t.Fatalf("expected 1 remaining slot after confirmed removal, got %d", got)
+	}
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM responses"); got != 2 {
+		t.Fatalf("expected 2 remaining responses (only the kept slot's) after confirmed removal, got %d", got)
+	}
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM responses WHERE slot_id = ?", slots[0].ID); got != 0 {
+		t.Fatalf("expected zero responses left for the removed slot, got %d", got)
+	}
+}
+
+func TestEdit_AddSlot_ShowsDashForExistingParticipants(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createEditPollWithSlots(t, st, "Add Slot Poll", "ptok-add-slot", "atok-add-slot", 1)
+
+	submitVote(t, ts, poll.ParticipantToken, "Alice", slots)
+
+	editPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/edit"
+	form := url.Values{}
+	form.Set("title", poll.Title)
+	form.Add("slot_id", fmt.Sprintf("%d", slots[0].ID))
+	form.Add("slot_date", slots[0].StartsAt)
+	// A brand-new row: empty slot_id, a fresh date.
+	form.Add("slot_id", "")
+	form.Add("slot_date", "2026-09-15")
+
+	resp, err := noRedirectClient().PostForm(ts.URL+editPath, form)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", editPath, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", resp.StatusCode, body)
+	}
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM slots WHERE poll_id = ?", poll.ID); got != 2 {
+		t.Fatalf("expected 2 slots after add, got %d", got)
+	}
+
+	adminResp, err := http.Get(ts.URL + "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken)
+	if err != nil {
+		t.Fatalf("GET admin page error: %v", err)
+	}
+	defer adminResp.Body.Close()
+	adminBody, err := io.ReadAll(adminResp.Body)
+	if err != nil {
+		t.Fatalf("reading admin body: %v", err)
+	}
+	adminBodyStr := string(adminBody)
+
+	gridIdx := strings.Index(adminBodyStr, `class="results-section"`)
+	if gridIdx == -1 {
+		t.Fatalf("expected a results-section in the admin body, got: %s", adminBodyStr)
+	}
+	gridStr := adminBodyStr[gridIdx:]
+	if !strings.Contains(gridStr, `<span class="results-missing">—</span>`) {
+		t.Fatalf("expected the missing-cell dash for the existing participant in the new slot's column, got: %s", gridStr)
+	}
+}
+
+func TestEdit_SlotRemovalWarningMarkupPresent(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createEditPollWithSlots(t, st, "Warning Markup Poll", "ptok-warning-markup", "atok-warning-markup", 1)
+
+	submitVote(t, ts, poll.ParticipantToken, "Alice", slots)
+
+	editPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/edit"
+	resp, err := http.Get(ts.URL + editPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", editPath, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "This slot has") {
+		t.Fatalf("expected the per-slot removal-warning scaffold ('This slot has') in body, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, `data-response-count="1"`) {
+		t.Fatalf("expected data-response-count=\"1\" for the responded slot's row, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, `id="confirm-slot-removal"`) {
+		t.Fatalf("expected the aggregate confirm checkbox in body, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "I understand this will permanently delete these responses.") {
+		t.Fatalf("expected the confirm checkbox label copy in body, got: %s", bodyStr)
+	}
+}
+
+func TestEdit_ScriptBearingTitle_Escaped(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createEditPollWithSlots(t, st, "Escape Test Poll", "ptok-edit-xss", "atok-edit-xss", 1)
+
+	editPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/edit"
+	maliciousTitle := `<script>alert(1)</script>`
+
+	form := url.Values{}
+	form.Set("title", maliciousTitle)
+	form.Set("description", "")
+	form.Set("organizer_name", "")
+	form.Add("slot_id", fmt.Sprintf("%d", slots[0].ID))
+	form.Add("slot_date", slots[0].StartsAt)
+
+	resp, err := noRedirectClient().PostForm(ts.URL+editPath, form)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", editPath, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", resp.StatusCode, body)
+	}
+
+	getResp, err := http.Get(ts.URL + editPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", editPath, err)
+	}
+	defer getResp.Body.Close()
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if strings.Contains(bodyStr, maliciousTitle) {
+		t.Fatalf("expected the script-bearing title to be HTML-escaped, found raw markup in body: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "&lt;script&gt;") {
+		t.Fatalf("expected the escaped form '&lt;script&gt;' in body, got: %s", bodyStr)
+	}
+}
+
+// countRowsWeb is server_test.go's local equivalent of the store package's
+// countRows test helper (kept separate — different package, same shape).
+func countRowsWeb(t *testing.T, st *store.Store, query string, args ...interface{}) int {
+	t.Helper()
+	var n int
+	if err := st.DB().QueryRowContext(context.Background(), query, args...).Scan(&n); err != nil {
+		t.Fatalf("query %q error: %v", query, err)
+	}
+	return n
+}
+
+// participantIDByNameWeb returns the id of the participant with the given
+// display name in pollID, failing the test if not found. Mirrors the store
+// package's participantIDByName helper (different package, same shape).
+func participantIDByNameWeb(t *testing.T, st *store.Store, pollID int64, name string) int64 {
+	t.Helper()
+	var id int64
+	if err := st.DB().QueryRowContext(context.Background(), "SELECT id FROM participants WHERE poll_id = ? AND display_name = ?", pollID, name).Scan(&id); err != nil {
+		t.Fatalf("querying participant id for %q: %v", name, err)
+	}
+	return id
+}
+
+func TestDeleteResponse_EndToEnd(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Delete Response Poll", "ptok-delresp-e2e", "atok-delresp-e2e", 2)
+
+	postAnswer := func(name, slot0Answer, slot1Answer string) {
+		form := url.Values{}
+		form.Set("display_name", name)
+		form.Set(fmt.Sprintf("answer_%d", slots[0].ID), slot0Answer)
+		form.Set(fmt.Sprintf("answer_%d", slots[1].ID), slot1Answer)
+		resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+		if err != nil {
+			t.Fatalf("POST responses (%s) error: %v", name, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusSeeOther {
+			body, _ := io.ReadAll(resp.Body)
+			t.Fatalf("expected 303 for %s, got %d; body: %s", name, resp.StatusCode, body)
+		}
+	}
+
+	postAnswer("Alice", "yes", "no")
+	postAnswer("Bob", "yes", "maybe")
+
+	aliceID := participantIDByNameWeb(t, st, poll.ID, "Alice")
+
+	deletePath := fmt.Sprintf("/poll/%s/admin/%s/responses/%d/delete", poll.ParticipantToken, poll.AdminToken, aliceID)
+	delResp, err := noRedirectClient().Post(ts.URL+deletePath, "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", deletePath, err)
+	}
+	defer delResp.Body.Close()
+	if delResp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(delResp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", delResp.StatusCode, body)
+	}
+	wantLocation := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+	if got := delResp.Header.Get("Location"); got != wantLocation {
+		t.Fatalf("expected Location %q, got %q", wantLocation, got)
+	}
+
+	adminPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+	getResp, err := http.Get(ts.URL + adminPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", adminPath, err)
+	}
+	defer getResp.Body.Close()
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if strings.Contains(bodyStr, "Alice") {
+		t.Fatalf("expected Alice's name gone from the grid after deletion, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "Bob") {
+		t.Fatalf("expected Bob to remain in the grid, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "1 Yes · 0 No · 0 Maybe") {
+		t.Fatalf("expected slot-0 tally recomputed to '1 Yes · 0 No · 0 Maybe' (Bob only), got: %s", bodyStr)
+	}
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", poll.ID); got != 1 {
+		t.Fatalf("expected 1 remaining participant, got %d", got)
+	}
+}
+
+func TestDeleteResponse_WrongTokenPair_404(t *testing.T) {
+	ts, st := newTestServer(t)
+	pollA, slotsA := createVotePollWithSlots(t, st, "Wrong Token Poll A", "ptok-delresp-wrong-a", "atok-delresp-wrong-a", 1)
+	pollB, _ := createVotePollWithSlots(t, st, "Wrong Token Poll B", "ptok-delresp-wrong-b", "atok-delresp-wrong-b", 1)
+
+	form := url.Values{}
+	form.Set("display_name", "Alice")
+	form.Set(fmt.Sprintf("answer_%d", slotsA[0].ID), "yes")
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+pollA.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	resp.Body.Close()
+
+	aliceID := participantIDByNameWeb(t, st, pollA.ID, "Alice")
+
+	// Mismatched pair: pollA's participant token with pollB's admin token.
+	deletePath := fmt.Sprintf("/poll/%s/admin/%s/responses/%d/delete", pollA.ParticipantToken, pollB.AdminToken, aliceID)
+	delResp, err := noRedirectClient().Post(ts.URL+deletePath, "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", deletePath, err)
+	}
+	defer delResp.Body.Close()
+	if delResp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(delResp.Body)
+		t.Fatalf("expected 404 for mismatched token pair, got %d; body: %s", delResp.StatusCode, body)
+	}
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM participants WHERE poll_id = ?", pollA.ID); got != 1 {
+		t.Fatalf("expected pollA's participant untouched by a mismatched-token delete attempt, got %d", got)
+	}
+}
+
+func TestResults_AdminRow_OnlyOnAdminAndWhenResponses(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Admin Row Poll", "ptok-adminrow", "atok-adminrow", 1)
+
+	adminPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+
+	// Zero responses: no admin-controls row rendered even on the admin route.
+	zeroRespResp, err := http.Get(ts.URL + adminPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", adminPath, err)
+	}
+	defer zeroRespResp.Body.Close()
+	zeroRespBody, err := io.ReadAll(zeroRespResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if strings.Contains(string(zeroRespBody), "results-admin-row") {
+		t.Fatalf("expected no results-admin-row with zero responses, got: %s", zeroRespBody)
+	}
+
+	form := url.Values{}
+	form.Set("display_name", "Alice")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	voteResp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	voteResp.Body.Close()
+
+	// Admin route with responses: row + Remove button present.
+	adminGetResp, err := http.Get(ts.URL + adminPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", adminPath, err)
+	}
+	defer adminGetResp.Body.Close()
+	adminBody, err := io.ReadAll(adminGetResp.Body)
+	if err != nil {
+		t.Fatalf("reading admin body: %v", err)
+	}
+	adminBodyStr := string(adminBody)
+	if !strings.Contains(adminBodyStr, "results-admin-row") {
+		t.Fatalf("expected results-admin-row on admin route with responses, got: %s", adminBodyStr)
+	}
+	if !strings.Contains(adminBodyStr, ">Remove<") {
+		t.Fatalf("expected a Remove button on the admin route, got: %s", adminBodyStr)
+	}
+
+	// Participant route with the same data: no admin row at all.
+	participantPath := "/poll/" + poll.ParticipantToken
+	partResp, err := http.Get(ts.URL + participantPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", participantPath, err)
+	}
+	defer partResp.Body.Close()
+	partBody, err := io.ReadAll(partResp.Body)
+	if err != nil {
+		t.Fatalf("reading participant body: %v", err)
+	}
+	if strings.Contains(string(partBody), "results-admin-row") {
+		t.Fatalf("expected no results-admin-row on the participant route, got: %s", partBody)
+	}
+}
+
+// TestAdminJS_ConfirmCopyAndDoubleSubmitGuard proves admin.js exists and
+// gates the delete-response form's submission on window.confirm with the
+// exact copy shape from 04-UI-SPEC.md, and disables the submit button on
+// confirm as the double-submit backstop (T-04-04) — since this behavior
+// runs in a browser (not Go), the strongest mechanical check available here
+// is asserting the shipped JS source contains it.
+func TestAdminJS_ConfirmCopyAndDoubleSubmitGuard(t *testing.T) {
+	data, err := os.ReadFile("static/admin.js")
+	if err != nil {
+		t.Fatalf("reading static/admin.js: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "window.confirm") {
+		t.Fatalf("expected admin.js to gate the delete on window.confirm, got: %s", content)
+	}
+	if !strings.Contains(content, `"Remove " + name + "'s response to \"" + title + "\"? This cannot be undone."`) {
+		t.Fatalf("expected admin.js to build the exact confirm() copy shape, got: %s", content)
+	}
+	if !strings.Contains(content, "button.disabled = true") {
+		t.Fatalf("expected admin.js to disable the submit button on confirm (double-submit guard), got: %s", content)
+	}
+}
+
+// TestDeletePoll_EndToEnd proves the whole-poll delete route (Plan 04-03,
+// ADM-04) removes the poll and cascades to its responses: a POST to the
+// delete route redirects to the (now-invalid) participant link, and both
+// that link and the admin link 404 afterward.
+func TestDeletePoll_EndToEnd(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Delete Poll E2E", "ptok-delpoll-e2e", "atok-delpoll-e2e", 1)
+
+	form := url.Values{}
+	form.Set("display_name", "Alice")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	voteResp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	voteResp.Body.Close()
+
+	deletePath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/delete"
+	delResp, err := noRedirectClient().Post(ts.URL+deletePath, "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", deletePath, err)
+	}
+	defer delResp.Body.Close()
+	if delResp.StatusCode != http.StatusSeeOther {
+		body, _ := io.ReadAll(delResp.Body)
+		t.Fatalf("expected 303, got %d; body: %s", delResp.StatusCode, body)
+	}
+	wantLocation := "/poll/" + poll.ParticipantToken
+	if got := delResp.Header.Get("Location"); got != wantLocation {
+		t.Fatalf("expected Location %q, got %q", wantLocation, got)
+	}
+
+	participantPath := "/poll/" + poll.ParticipantToken
+	partResp, err := http.Get(ts.URL + participantPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", participantPath, err)
+	}
+	defer partResp.Body.Close()
+	if partResp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(partResp.Body)
+		t.Fatalf("expected 404 for the participant link after delete, got %d; body: %s", partResp.StatusCode, body)
+	}
+
+	adminPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken
+	adminResp, err := http.Get(ts.URL + adminPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", adminPath, err)
+	}
+	defer adminResp.Body.Close()
+	if adminResp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(adminResp.Body)
+		t.Fatalf("expected 404 for the admin link after delete, got %d; body: %s", adminResp.StatusCode, body)
+	}
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM polls WHERE id = ?", poll.ID); got != 0 {
+		t.Fatalf("expected the poll row deleted, got %d", got)
+	}
+}
+
+// TestDeletePoll_WrongTokenPair_404 proves a mismatched ptoken/atoken pair
+// on the delete-poll route 404s and leaves the poll intact (T-04-02).
+func TestDeletePoll_WrongTokenPair_404(t *testing.T) {
+	ts, st := newTestServer(t)
+	pollA, _ := createVotePollWithSlots(t, st, "Delete Poll Wrong Token A", "ptok-delpoll-wrong-a", "atok-delpoll-wrong-a", 1)
+	pollB, _ := createVotePollWithSlots(t, st, "Delete Poll Wrong Token B", "ptok-delpoll-wrong-b", "atok-delpoll-wrong-b", 1)
+
+	// Mismatched pair: pollA's participant token with pollB's admin token.
+	deletePath := "/poll/" + pollA.ParticipantToken + "/admin/" + pollB.AdminToken + "/delete"
+	delResp, err := noRedirectClient().Post(ts.URL+deletePath, "application/x-www-form-urlencoded", nil)
+	if err != nil {
+		t.Fatalf("POST %s error: %v", deletePath, err)
+	}
+	defer delResp.Body.Close()
+	if delResp.StatusCode != http.StatusNotFound {
+		body, _ := io.ReadAll(delResp.Body)
+		t.Fatalf("expected 404 for mismatched token pair, got %d; body: %s", delResp.StatusCode, body)
+	}
+
+	if got := countRowsWeb(t, st, "SELECT COUNT(*) FROM polls WHERE id = ?", pollA.ID); got != 1 {
+		t.Fatalf("expected pollA untouched by a mismatched-token delete attempt, got %d", got)
+	}
+
+	// A follow-up GET of the CORRECT admin link still resolves (200).
+	correctAdminPath := "/poll/" + pollA.ParticipantToken + "/admin/" + pollA.AdminToken
+	correctResp, err := http.Get(ts.URL + correctAdminPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", correctAdminPath, err)
+	}
+	defer correctResp.Body.Close()
+	if correctResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(correctResp.Body)
+		t.Fatalf("expected 200 for pollA's correct admin link, got %d; body: %s", correctResp.StatusCode, body)
+	}
+}
+
+// TestDeletePoll_DangerZoneRendered proves the edit page renders the
+// danger-zone section with the exact copy, a btn-danger "Delete poll"
+// button whose form posts to the delete route, and the poll title +
+// response count carried in data-* attributes for the confirm() copy.
+func TestDeletePoll_DangerZoneRendered(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createEditPollWithSlots(t, st, "Danger Zone Poll", "ptok-dangerzone", "atok-dangerzone", 1)
+
+	form := url.Values{}
+	form.Set("display_name", "Alice")
+	form.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	voteResp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", form)
+	if err != nil {
+		t.Fatalf("POST responses error: %v", err)
+	}
+	voteResp.Body.Close()
+
+	editPath := "/poll/" + poll.ParticipantToken + "/admin/" + poll.AdminToken + "/edit"
+	getResp, err := http.Get(ts.URL + editPath)
+	if err != nil {
+		t.Fatalf("GET %s error: %v", editPath, err)
+	}
+	defer getResp.Body.Close()
+	body, err := io.ReadAll(getResp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	if !strings.Contains(bodyStr, "Danger zone") {
+		t.Fatalf("expected 'Danger zone' heading, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "Deleting this poll removes it and all responses permanently. This cannot be undone.") {
+		t.Fatalf("expected the danger-zone body copy, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, `class="btn-danger"`) || !strings.Contains(bodyStr, ">Delete poll<") {
+		t.Fatalf("expected a btn-danger 'Delete poll' button, got: %s", bodyStr)
+	}
+	wantAction := `action="/poll/` + poll.ParticipantToken + `/admin/` + poll.AdminToken + `/delete"`
+	if !strings.Contains(bodyStr, wantAction) {
+		t.Fatalf("expected the delete-poll form to post to %q, got: %s", wantAction, bodyStr)
+	}
+	if !strings.Contains(bodyStr, `data-poll-title="Danger Zone Poll"`) {
+		t.Fatalf("expected data-poll-title carrying the poll's title, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, `data-response-count="1"`) {
+		t.Fatalf("expected data-response-count reflecting the 1 seeded response, got: %s", bodyStr)
+	}
+}
+
+// TestEditJS_DeletePollConfirmAndDoubleSubmitGuard proves edit.js gates the
+// delete-poll form's submission on window.confirm with the exact copy
+// shape from 04-UI-SPEC.md, and disables the submit button on confirm as
+// the double-submit backstop (T-04-04) — mirrors
+// TestAdminJS_ConfirmCopyAndDoubleSubmitGuard's approach of asserting the
+// shipped JS source, since this behavior runs in a browser, not Go.
+func TestEditJS_DeletePollConfirmAndDoubleSubmitGuard(t *testing.T) {
+	data, err := os.ReadFile("static/edit.js")
+	if err != nil {
+		t.Fatalf("reading static/edit.js: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "delete-poll-form") {
+		t.Fatalf("expected edit.js to gate the '.delete-poll-form' submit, got: %s", content)
+	}
+	if !strings.Contains(content, "window.confirm") {
+		t.Fatalf("expected edit.js to gate the delete-poll submit on window.confirm, got: %s", content)
+	}
+	if !strings.Contains(content, `"Delete \"" + title + "\"? This will permanently delete the poll and its " +`) {
+		t.Fatalf("expected edit.js to build the exact delete-poll confirm() copy shape, got: %s", content)
+	}
+	if !strings.Contains(content, "deleteButton.disabled = true") {
+		t.Fatalf("expected edit.js to disable the delete-poll submit button on confirm (double-submit guard), got: %s", content)
 	}
 }
