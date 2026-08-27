@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/Carles-Figuerola/date-chooser/compare/date-chooser-v1.1.1...date-chooser-v1.1.2) (2026-08-27)
+
+
+### Bug Fixes
+
+* release please uses a PAT now ([#3](https://github.com/Carles-Figuerola/date-chooser/issues/3)) ([8298ecd](https://github.com/Carles-Figuerola/date-chooser/commit/8298ecd3c3994bf6a0ef17e458f03bbb884c7110))
+
 ## [1.1.1](https://github.com/Carles-Figuerola/date-chooser/compare/date-chooser-v1.1.0...date-chooser-v1.1.1) (2026-08-27)
 
 
