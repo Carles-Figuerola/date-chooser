@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.2.0](https://github.com/Carles-Figuerola/date-chooser/compare/v1.1.1...v1.2.0) (2026-08-28)
+
+
+### Features
+
+* instance-admin page gated by a database-only secret (ADMIN-01..05) ([#11](https://github.com/Carles-Figuerola/date-chooser/issues/11)) ([23bcb22](https://github.com/Carles-Figuerola/date-chooser/commit/23bcb22f6866a19289275b08bae04c9689d7f593))
+* re-sequence slots by date, start time, then duration on every save ([#9](https://github.com/Carles-Figuerola/date-chooser/issues/9)) ([1a9578c](https://github.com/Carles-Figuerola/date-chooser/commit/1a9578c2068b73923e76af115a44634d2182b3b9))
+* slot import/export on the create page (IMPORT-01..03) ([#10](https://github.com/Carles-Figuerola/date-chooser/issues/10)) ([107d2b0](https://github.com/Carles-Figuerola/date-chooser/commit/107d2b05f0a186bc34ae4839095a8646becc2a42))
+
+
+### Bug Fixes
+
+* Edit page time field parity ([#6](https://github.com/Carles-Figuerola/date-chooser/issues/6)) ([e15d3f3](https://github.com/Carles-Figuerola/date-chooser/commit/e15d3f355b9ed7aba7377e8c4bc446511902537a))
+
 ## [1.1.1](https://github.com/Carles-Figuerola/date-chooser/compare/v1.1.2...v1.1.1) (2026-08-27)
 
 
