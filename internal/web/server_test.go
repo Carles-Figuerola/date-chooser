@@ -1828,6 +1828,50 @@ func TestAdminJS_ConfirmCopyAndDoubleSubmitGuard(t *testing.T) {
 	}
 }
 
+// TestVoteJS_SetAllYesConditionalConfirm proves vote.js's "Set all to Yes"
+// button gates window.confirm on whether the slots already share one
+// identical answer (skip confirm) versus mixed/unanswered slots (confirm
+// required), and that it actually checks each slot's "yes" radio.
+func TestVoteJS_SetAllYesConditionalConfirm(t *testing.T) {
+	data, err := os.ReadFile("static/vote.js")
+	if err != nil {
+		t.Fatalf("reading static/vote.js: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "set-all-yes-btn") {
+		t.Fatalf("expected vote.js to reference set-all-yes-btn, got no match")
+	}
+	if !strings.Contains(content, "window.confirm") {
+		t.Fatalf("expected vote.js to gate on window.confirm, got no match")
+	}
+	if !strings.Contains(content, "allSameAnswer") {
+		t.Fatalf("expected vote.js to compute whether all slots share one answer, got no match")
+	}
+	if !strings.Contains(content, `input[type="radio"][value="yes"]`) {
+		t.Fatalf("expected vote.js to select each slot's yes radio, got no match")
+	}
+}
+
+func TestVote_SetAllYesButtonRendered(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, _ := createVotePollWithSlots(t, st, "Set All Yes Poll", "ptok-set-all-yes", "atok-set-all-yes", 2)
+
+	resp, err := noRedirectClient().Get(ts.URL + "/poll/" + poll.ParticipantToken)
+	if err != nil {
+		t.Fatalf("GET /poll/{ptoken} error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	if !strings.Contains(string(body), `id="set-all-yes-btn"`) {
+		t.Fatalf("expected the rendered vote page to contain the Set all to Yes button, got: %s", body)
+	}
+}
+
 // TestDeletePoll_EndToEnd proves the whole-poll delete route (Plan 04-03,
 // ADM-04) removes the poll and cascades to its responses: a POST to the
 // delete route redirects to the (now-invalid) participant link, and both
