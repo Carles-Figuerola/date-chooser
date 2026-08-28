@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0](https://github.com/Carles-Figuerola/date-chooser/compare/v1.3.0...v1.4.0) (2026-08-28)
+
+
+### Features
+
+* add 'Set all to No/Maybe' buttons and color-code all three by answer ([#18](https://github.com/Carles-Figuerola/date-chooser/issues/18)) ([dbaf8f8](https://github.com/Carles-Figuerola/date-chooser/commit/dbaf8f8718783af2e4c8c154f63e81f6c9814fc1))
+
 ## [1.3.0](https://github.com/Carles-Figuerola/date-chooser/compare/v1.2.0...v1.3.0) (2026-08-28)
 
 
