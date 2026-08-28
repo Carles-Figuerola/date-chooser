@@ -71,20 +71,23 @@ func TestImportExport_CreatePageMarkupAndWiring(t *testing.T) {
 	}
 }
 
-// TestImportExport_EditPageHasNoImportExportControls proves Import/Export
-// is scoped to the create page only, per explicit user direction — edit.html
-// must not carry these controls, and edit.js must not reference the shared
-// slotsToText/parseSlotsText functions.
-func TestImportExport_EditPageHasNoImportExportControls(t *testing.T) {
+// TestImportExport_EditPageHasExportButOnlyExport proves the edit page
+// carries an Export control (re-added after the user reconsidered — an
+// export button on the edit page turned out to be useful) but no Import
+// control: Import stays create-page only.
+func TestImportExport_EditPageHasExportButOnlyExport(t *testing.T) {
 	html, err := os.ReadFile("templates/edit.html")
 	if err != nil {
 		t.Fatalf("reading templates/edit.html: %v", err)
 	}
 	htmlContent := string(html)
 
-	for _, id := range []string{"export-slots-btn", "import-slots-btn", "import-slots-file", "import-slots-message"} {
+	if !strings.Contains(htmlContent, `id="export-slots-btn"`) {
+		t.Fatalf(`expected edit.html to contain id="export-slots-btn", got no match`)
+	}
+	for _, id := range []string{"import-slots-btn", "import-slots-file", "import-slots-message"} {
 		if strings.Contains(htmlContent, `id="`+id+`"`) {
-			t.Fatalf("expected edit.html to NOT contain id=%q (Import/Export is create-page only), but found it", id)
+			t.Fatalf("expected edit.html to NOT contain id=%q (Import is create-page only), but found it", id)
 		}
 	}
 
@@ -94,7 +97,10 @@ func TestImportExport_EditPageHasNoImportExportControls(t *testing.T) {
 	}
 	jsContent := string(js)
 
-	if strings.Contains(jsContent, "DateChooserSlotFields.slotsToText(") || strings.Contains(jsContent, "DateChooserSlotFields.parseSlotsText(") {
-		t.Fatalf("expected edit.js to NOT reference slotsToText/parseSlotsText (Import/Export is create-page only), but found a reference")
+	if !strings.Contains(jsContent, "DateChooserSlotFields.slotsToText(") {
+		t.Fatalf("expected edit.js to call DateChooserSlotFields.slotsToText, got no match")
+	}
+	if strings.Contains(jsContent, "DateChooserSlotFields.parseSlotsText(") {
+		t.Fatalf("expected edit.js to NOT reference parseSlotsText (Import is create-page only), but found a reference")
 	}
 }
