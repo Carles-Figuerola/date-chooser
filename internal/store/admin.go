@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"sort"
 )
 
 // UpdatePollDetails updates a poll's title, description, and organizer name
@@ -27,12 +28,17 @@ type SlotEdit struct {
 }
 
 // UpdatePollSlots applies a diff to a poll's slot list inside a single
-// transaction: keep rows are updated in place (position untouched), removeIDs
-// are deleted (cascading, via schema.sql's ON DELETE CASCADE, to exactly
-// that slot's response rows), and add rows are appended after the current
-// max position. A delete-all-then-reinsert approach is deliberately NOT
-// used here, since that would cascade-delete every response on every edit —
-// prohibited by 04-CONTEXT.md's cascade-scoping requirement.
+// transaction: keep rows are updated in place, removeIDs are deleted
+// (cascading, via schema.sql's ON DELETE CASCADE, to exactly that slot's
+// response rows), and add rows are inserted. A delete-all-then-reinsert
+// approach is deliberately NOT used here, since that would cascade-delete
+// every response on every edit — prohibited by 04-CONTEXT.md's
+// cascade-scoping requirement.
+//
+// After the diff is applied, every surviving slot (kept + newly added) is
+// re-sequenced by date, then start time, then duration (shortest first) —
+// so the voting/results grid always presents slots in a predictable order
+// regardless of the order slots were added or edited in.
 //
 // Every write is scoped `WHERE ... AND poll_id = ?` using the caller-
 // supplied pollID (always the poll resolved via PollByTokens upstream,
@@ -79,6 +85,43 @@ func (s *Store) UpdatePollSlots(ctx context.Context, pollID int64, keep []SlotEd
 			`, pollID, nextPosition+i, a.StartsAt, a.EndsAt); err != nil {
 				return fmt.Errorf("store: inserting new slot %d: %w", i, err)
 			}
+		}
+	}
+
+	rows, err := tx.QueryContext(ctx, `
+		SELECT id, starts_at, ends_at FROM slots WHERE poll_id = ?
+	`, pollID)
+	if err != nil {
+		return fmt.Errorf("store: querying slots to reorder: %w", err)
+	}
+	type slotRow struct {
+		id       int64
+		startsAt string
+		endsAt   *string
+	}
+	var all []slotRow
+	for rows.Next() {
+		var r slotRow
+		if err := rows.Scan(&r.id, &r.startsAt, &r.endsAt); err != nil {
+			rows.Close()
+			return fmt.Errorf("store: scanning slot to reorder: %w", err)
+		}
+		all = append(all, r)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("store: iterating slots to reorder: %w", err)
+	}
+	rows.Close()
+
+	sort.SliceStable(all, func(i, j int) bool {
+		return slotSortLess(all[i].startsAt, all[i].endsAt, all[j].startsAt, all[j].endsAt)
+	})
+	for position, r := range all {
+		if _, err := tx.ExecContext(ctx, `
+			UPDATE slots SET position = ? WHERE id = ?
+		`, position, r.id); err != nil {
+			return fmt.Errorf("store: reordering slot %d: %w", r.id, err)
 		}
 	}
 

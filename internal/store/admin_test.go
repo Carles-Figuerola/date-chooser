@@ -140,7 +140,7 @@ func TestAdmin_UpdatePollSlots_AddAppendsAtEndKeepsResponses(t *testing.T) {
 	}
 }
 
-func TestAdmin_UpdatePollSlots_EditInPlacePreservesPositionAndResponses(t *testing.T) {
+func TestAdmin_UpdatePollSlots_EditInPlaceReordersAndPreservesResponses(t *testing.T) {
 	st, poll, slots := newAdminTestStore(t, "Edit In Place Poll", "ptok-admin-edit", "atok-admin-edit", 2)
 	ctx := context.Background()
 
@@ -148,11 +148,13 @@ func TestAdmin_UpdatePollSlots_EditInPlacePreservesPositionAndResponses(t *testi
 
 	beforeResponses := countRows(t, st, "SELECT COUNT(*) FROM responses WHERE slot_id = ?", slots[0].ID)
 
-	newEnd := "2026-10-05"
+	// slots[0] starts at "2026-09-01", slots[1] at "2026-09-02". Editing
+	// slots[0] to a later date than slots[1] should push it to position 1
+	// — slots are re-sequenced by date on every save, not left in
+	// creation order.
 	if err := st.UpdatePollSlots(ctx, poll.ID, []SlotEdit{{ID: slots[0].ID, StartsAt: "2026-10-05"}}, nil, nil); err != nil {
 		t.Fatalf("UpdatePollSlots() error: %v", err)
 	}
-	_ = newEnd
 
 	var starts string
 	var position int
@@ -162,8 +164,16 @@ func TestAdmin_UpdatePollSlots_EditInPlacePreservesPositionAndResponses(t *testi
 	if starts != "2026-10-05" {
 		t.Fatalf("expected starts_at updated to '2026-10-05', got %q", starts)
 	}
-	if position != slots[0].Position {
-		t.Fatalf("expected position unchanged (%d), got %d", slots[0].Position, position)
+	if position != 1 {
+		t.Fatalf("expected the edited (now-latest-dated) slot to move to position 1, got %d", position)
+	}
+
+	var otherPosition int
+	if err := st.DB().QueryRowContext(ctx, "SELECT position FROM slots WHERE id = ?", slots[1].ID).Scan(&otherPosition); err != nil {
+		t.Fatalf("querying other slot: %v", err)
+	}
+	if otherPosition != 0 {
+		t.Fatalf("expected the untouched, earlier-dated slot to move to position 0, got %d", otherPosition)
 	}
 
 	afterResponses := countRows(t, st, "SELECT COUNT(*) FROM responses WHERE slot_id = ?", slots[0].ID)
