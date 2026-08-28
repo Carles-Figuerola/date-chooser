@@ -124,6 +124,13 @@ textarea:focus {
   cursor: pointer;
 }
 
+.set-all-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
+}
+
 .btn-secondary {
   display: inline-flex;
   align-items: center;
@@ -139,6 +146,21 @@ textarea:focus {
   text-decoration: none;
   cursor: pointer;
   margin-bottom: var(--space-sm);
+}
+
+.btn-set-all-yes {
+  color: var(--color-yes);
+  border-color: var(--color-yes);
+}
+
+.btn-set-all-no {
+  color: var(--color-destructive);
+  border-color: var(--color-destructive);
+}
+
+.btn-set-all-maybe {
+  color: var(--color-text-muted);
+  border-color: var(--color-text-muted);
 }
 
 .btn-remove {

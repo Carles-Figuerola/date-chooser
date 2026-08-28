@@ -1828,19 +1828,20 @@ func TestAdminJS_ConfirmCopyAndDoubleSubmitGuard(t *testing.T) {
 	}
 }
 
-// TestVoteJS_SetAllYesConditionalConfirm proves vote.js's "Set all to Yes"
-// button gates window.confirm on whether the slots already share one
-// identical answer (skip confirm) versus mixed/unanswered slots (confirm
-// required), and that it actually checks each slot's "yes" radio.
-func TestVoteJS_SetAllYesConditionalConfirm(t *testing.T) {
+// TestVoteJS_SetAllConditionalConfirm proves vote.js's "Set all to X"
+// buttons gate window.confirm on whether the slots already share one
+// identical answer (skip confirm), are entirely unanswered (skip confirm —
+// nothing to overwrite), or have mixed answers (confirm required), and that
+// the click handler selects each slot's radio by the button's target value.
+func TestVoteJS_SetAllConditionalConfirm(t *testing.T) {
 	data, err := os.ReadFile("static/vote.js")
 	if err != nil {
 		t.Fatalf("reading static/vote.js: %v", err)
 	}
 	content := string(data)
 
-	if !strings.Contains(content, "set-all-yes-btn") {
-		t.Fatalf("expected vote.js to reference set-all-yes-btn, got no match")
+	if !strings.Contains(content, "data-set-all") {
+		t.Fatalf("expected vote.js to wire up buttons via data-set-all, got no match")
 	}
 	if !strings.Contains(content, "window.confirm") {
 		t.Fatalf("expected vote.js to gate on window.confirm, got no match")
@@ -1848,14 +1849,17 @@ func TestVoteJS_SetAllYesConditionalConfirm(t *testing.T) {
 	if !strings.Contains(content, "allSameAnswer") {
 		t.Fatalf("expected vote.js to compute whether all slots share one answer, got no match")
 	}
-	if !strings.Contains(content, `input[type="radio"][value="yes"]`) {
-		t.Fatalf("expected vote.js to select each slot's yes radio, got no match")
+	if !strings.Contains(content, "hasAnyAnswer") {
+		t.Fatalf("expected vote.js to compute whether any slot has an answer, so an all-empty poll skips the confirm, got no match")
+	}
+	if !strings.Contains(content, `input[type="radio"][value="' + target + '"]`) {
+		t.Fatalf("expected vote.js to select each slot's radio by the button's target value, got no match")
 	}
 }
 
-func TestVote_SetAllYesButtonRendered(t *testing.T) {
+func TestVote_SetAllButtonsRendered(t *testing.T) {
 	ts, st := newTestServer(t)
-	poll, _ := createVotePollWithSlots(t, st, "Set All Yes Poll", "ptok-set-all-yes", "atok-set-all-yes", 2)
+	poll, _ := createVotePollWithSlots(t, st, "Set All Poll", "ptok-set-all", "atok-set-all", 2)
 
 	resp, err := noRedirectClient().Get(ts.URL + "/poll/" + poll.ParticipantToken)
 	if err != nil {
@@ -1867,8 +1871,10 @@ func TestVote_SetAllYesButtonRendered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading body: %v", err)
 	}
-	if !strings.Contains(string(body), `id="set-all-yes-btn"`) {
-		t.Fatalf("expected the rendered vote page to contain the Set all to Yes button, got: %s", body)
+	for _, id := range []string{"set-all-yes-btn", "set-all-no-btn", "set-all-maybe-btn"} {
+		if !strings.Contains(string(body), `id="`+id+`"`) {
+			t.Fatalf("expected the rendered vote page to contain the %s button, got: %s", id, body)
+		}
 	}
 }
 
