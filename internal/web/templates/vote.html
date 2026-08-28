@@ -16,7 +16,11 @@
     </div>
 
     <div class="form-section">
-      <button type="button" class="btn-secondary" id="set-all-yes-btn">Set all to Yes</button>
+      <div class="set-all-group">
+        <button type="button" class="btn-secondary btn-set-all-yes" id="set-all-yes-btn" data-set-all="yes">Set all to Yes</button>
+        <button type="button" class="btn-secondary btn-set-all-no" id="set-all-no-btn" data-set-all="no">Set all to No</button>
+        <button type="button" class="btn-secondary btn-set-all-maybe" id="set-all-maybe-btn" data-set-all="maybe">Set all to Maybe</button>
+      </div>
       {{range .Slots}}
       <div class="slot-row" data-slot-row>
         <span class="label">{{.Label}}</span>
@@ -50,10 +54,7 @@
   </form>
 </div>
 
-<details class="results-disclosure">
-  <summary class="label">Show results</summary>
-  {{template "results" .Results}}
-</details>
+{{template "results" .Results}}
 
 <script src="/static/vote.js" defer></script>
 {{end}}

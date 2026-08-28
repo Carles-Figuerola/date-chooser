@@ -15,45 +15,50 @@
   }
 
   var submitBtn = document.getElementById("submit-btn");
-  var setAllYesBtn = document.getElementById("set-all-yes-btn");
+  var setAllBtns = Array.prototype.slice.call(form.querySelectorAll("[data-set-all]"));
   var submitted = false;
 
-  // "Set all to Yes" only asks for confirmation when there's something a
-  // careless click could actually clobber: any unanswered slot, or slots
-  // that don't already all share one identical answer (yes/no/maybe alike
-  // — a uniform poll is a safe overwrite regardless of which value it's
-  // uniform on). Already-all-Yes (or all-No, or all-Maybe) skips the
-  // confirm since applying "Yes" to a uniform set changes nothing risky
-  // beyond what's already visible.
-  if (setAllYesBtn) {
-    setAllYesBtn.addEventListener("click", function () {
+  // A "Set all to X" button only asks for confirmation when there's
+  // something a careless click could actually clobber: slots that don't
+  // already all share one identical answer (yes/no/maybe alike — a
+  // uniform poll is a safe overwrite regardless of which value it's
+  // uniform on). Skips the confirm both when the poll is already uniform
+  // AND when no slot has been answered yet, since there's nothing to
+  // overwrite in either case.
+  setAllBtns.forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var target = btn.getAttribute("data-set-all");
       var groups = Array.prototype.slice.call(form.querySelectorAll(".pill-group"));
       var values = groups.map(function (group) {
         var checked = group.querySelector('input[type="radio"]:checked');
         return checked ? checked.value : null;
       });
+      var hasAnyAnswer = values.some(function (v) {
+        return v !== null;
+      });
       var allSameAnswer =
-        values.length > 0 &&
-        values[0] !== null &&
+        hasAnyAnswer &&
         values.every(function (v) {
           return v === values[0];
         });
 
-      if (!allSameAnswer) {
-        var confirmed = window.confirm("Set every slot to Yes? This will overwrite your current selections.");
+      if (hasAnyAnswer && !allSameAnswer) {
+        var confirmed = window.confirm(
+          "Set every slot to " + target.charAt(0).toUpperCase() + target.slice(1) + "? This will overwrite your current selections."
+        );
         if (!confirmed) {
           return;
         }
       }
 
       groups.forEach(function (group) {
-        var yesInput = group.querySelector('input[type="radio"][value="yes"]');
-        if (yesInput) {
-          yesInput.checked = true;
+        var input = group.querySelector('input[type="radio"][value="' + target + '"]');
+        if (input) {
+          input.checked = true;
         }
       });
     });
-  }
+  });
 
   form.addEventListener("submit", function (evt) {
     if (submitted) {
