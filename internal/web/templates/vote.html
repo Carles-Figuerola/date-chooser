@@ -50,7 +50,10 @@
   </form>
 </div>
 
-{{template "results" .Results}}
+<details class="results-disclosure">
+  <summary class="label">Show results</summary>
+  {{template "results" .Results}}
+</details>
 
 <script src="/static/vote.js" defer></script>
 {{end}}
