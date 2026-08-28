@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.3.0](https://github.com/Carles-Figuerola/date-chooser/compare/v1.2.0...v1.3.0) (2026-08-28)
+
+
+### Features
+
+* add a 'Set all to Yes' bulk action on the vote page ([#17](https://github.com/Carles-Figuerola/date-chooser/issues/17)) ([7140012](https://github.com/Carles-Figuerola/date-chooser/commit/714001279f7a22b42dad1b4a4e1368e341e6026a))
+* add a favicon ([#14](https://github.com/Carles-Figuerola/date-chooser/issues/14)) ([9d55bd1](https://github.com/Carles-Figuerola/date-chooser/commit/9d55bd12b6b426385ad45de2e8fc72a5c7642675))
+* add an Export button to the edit page ([#15](https://github.com/Carles-Figuerola/date-chooser/issues/15)) ([202ac15](https://github.com/Carles-Figuerola/date-chooser/commit/202ac154bbf869e05fc307ba71a0fb91f16c8108))
+* fold the vote page's results section behind a collapsed disclosure ([#16](https://github.com/Carles-Figuerola/date-chooser/issues/16)) ([5711f7f](https://github.com/Carles-Figuerola/date-chooser/commit/5711f7f72d73f7420b898c4ff2fb22f9eec0051d))
+
+
+### Bug Fixes
+
+* populate results grid on vote validation-error re-render ([#12](https://github.com/Carles-Figuerola/date-chooser/issues/12)) ([0998323](https://github.com/Carles-Figuerola/date-chooser/commit/0998323e1503fd70d1edfed6b437982733a7e411))
+
 ## [1.2.0](https://github.com/Carles-Figuerola/date-chooser/compare/v1.1.1...v1.2.0) (2026-08-28)
 
 
