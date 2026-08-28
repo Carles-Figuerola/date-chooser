@@ -2,11 +2,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
 
 	"github.com/cfiguerola/date-chooser/internal/store"
+	"github.com/cfiguerola/date-chooser/internal/token"
 	"github.com/cfiguerola/date-chooser/internal/web"
 )
 
@@ -32,7 +34,16 @@ func main() {
 	}
 	defer st.Close()
 
-	srv, err := web.NewServer(st)
+	candidateSecret, err := token.New()
+	if err != nil {
+		log.Fatalf("generating instance admin secret candidate: %v", err)
+	}
+	instanceAdminSecret, err := st.EnsureInstanceAdminSecret(context.Background(), candidateSecret)
+	if err != nil {
+		log.Fatalf("ensuring instance admin secret: %v", err)
+	}
+
+	srv, err := web.NewServer(st, instanceAdminSecret, dbPath)
 	if err != nil {
 		log.Fatalf("constructing server: %v", err)
 	}

@@ -19,11 +19,13 @@ var staticFS embed.FS
 // template named "content"; parsing them into a single set would let the
 // last-parsed page silently win for every other page.
 type pageTemplates struct {
-	create   *template.Template
-	links    *template.Template
-	vote     *template.Template
-	notfound *template.Template
-	edit     *template.Template
+	create     *template.Template
+	links      *template.Template
+	vote       *template.Template
+	notfound   *template.Template
+	edit       *template.Template
+	adminLogin *template.Template
+	admin      *template.Template
 }
 
 // parseTemplates parses every embedded template once at server startup.
@@ -50,5 +52,13 @@ func parseTemplates() (*pageTemplates, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &pageTemplates{create: create, links: links, vote: vote, notfound: notfound, edit: edit}, nil
+	adminLogin, err := template.ParseFS(templateFS, "templates/layout.html", "templates/admin-login.html")
+	if err != nil {
+		return nil, err
+	}
+	admin, err := template.ParseFS(templateFS, "templates/layout.html", "templates/admin.html")
+	if err != nil {
+		return nil, err
+	}
+	return &pageTemplates{create: create, links: links, vote: vote, notfound: notfound, edit: edit, adminLogin: adminLogin, admin: admin}, nil
 }

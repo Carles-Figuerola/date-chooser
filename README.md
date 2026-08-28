@@ -45,6 +45,22 @@ Then open http://localhost:8080 (or whatever `PORT` you set).
 | `PORT` | `8080` | HTTP listen port |
 | `DB_PATH` | `/data/datechooser.db` | Path to the SQLite database file — override to a local path when not running in Docker |
 
+## Instance admin page
+
+If you lose a poll's individual links, `/admin` lists every poll on the server (title,
+created date, participant link, admin link). It's gated by a secret that's generated
+automatically on first startup and stored in the database — never shown or resettable
+through the web UI. Retrieve it directly from the database file (adjust the path if you
+overrode `DB_PATH`):
+
+```bash
+sqlite3 /data/datechooser.db "SELECT value FROM settings WHERE key = 'instance_admin_secret';"
+```
+
+Then enter that value at `/admin/login`. That creates a session valid for 24 hours —
+you'll need to log in again after that (expired sessions are cleaned up automatically the
+next time anyone visits `/admin` or `/admin/login`).
+
 ## Health check
 
 ```bash

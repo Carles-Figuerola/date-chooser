@@ -718,3 +718,39 @@ textarea:focus {
   font-weight: 600;
   cursor: pointer;
 }
+
+/* Phase 7 (v1.2) — instance-admin page: the login form's "forgotten
+   secret" disclosure and the all-polls table. Zero new hex values. */
+
+.admin-secret-help {
+  margin-top: var(--space-lg);
+}
+
+.code-block {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: var(--space-sm) var(--space-md);
+  font-family: monospace;
+  font-size: 14px;
+  overflow-x: auto;
+}
+
+.admin-poll-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: var(--space-md);
+}
+
+.admin-poll-table th,
+.admin-poll-table td {
+  text-align: left;
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  font-size: 14px;
+}
+
+.admin-poll-table th {
+  color: var(--color-text-muted);
+  font-weight: 600;
+}

@@ -1,0 +1,22 @@
+{{define "content"}}
+<div class="card">
+  <h1 class="display">Instance admin</h1>
+  <p class="body">Enter the instance-admin secret to view every poll on this server.</p>
+
+  <div id="form-banner" class="banner-error"{{if not .BannerError}} hidden{{end}}>{{.BannerError}}</div>
+
+  <form method="post" action="/admin/login" class="form">
+    <div class="field">
+      <label for="secret" class="label">Secret</label>
+      <input type="password" id="secret" name="secret" required autofocus>
+    </div>
+    <button type="submit" class="btn-primary">Log in</button>
+  </form>
+
+  <details class="admin-secret-help">
+    <summary class="label">Forgotten the secret?</summary>
+    <p class="body">Retrieve it directly from the database file:</p>
+    <pre class="code-block">sqlite3 {{.DBPath}} "SELECT value FROM settings WHERE key = 'instance_admin_secret';"</pre>
+  </details>
+</div>
+{{end}}

@@ -48,3 +48,22 @@ CREATE TABLE IF NOT EXISTS responses (
 
 CREATE INDEX IF NOT EXISTS idx_responses_participant_id ON responses(participant_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_responses_participant_slot ON responses(participant_id, slot_id);
+
+-- Phase 7: instance-admin page. A single-row-per-key settings store; the
+-- instance-admin secret (key='instance_admin_secret') is the only value
+-- kept here today, generated on first startup if absent (ADMIN-01) and
+-- never exposed or rotated through the web UI — sqlite3-only.
+CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+
+-- A fresh session row is created on every successful /admin/login (not
+-- reused across logins); each is valid for 24h from created_at, checked at
+-- auth time regardless of whether this row has been pruned yet. Pruning
+-- itself (deleting rows older than 24h) is lazy garbage collection, run on
+-- every /admin and /admin/login request — not the security boundary.
+CREATE TABLE IF NOT EXISTS admin_sessions (
+    token      TEXT PRIMARY KEY,
+    created_at TEXT NOT NULL
+);
