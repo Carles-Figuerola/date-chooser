@@ -1228,6 +1228,16 @@ func (s *Server) handleSubmitResponse(w http.ResponseWriter, r *http.Request) {
 
 	if hasError {
 		view.BannerError = bannerErrorCopy
+		// Results must still be populated on a validation-error re-render —
+		// mirrors handleVoteForm's GET path. Without this the results
+		// section rendered blank (empty Participants/Rows) any time a
+		// submission was rejected, even though the poll already had votes.
+		resultParticipants, resultAnswers, err := s.store.ResponsesByPollID(r.Context(), poll.ID)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		view.Results = buildResultsGridView(poll.PollType, slots, resultParticipants, resultAnswers, false, poll.Title, "", "")
 		s.renderVoteForm(w, view)
 		return
 	}
