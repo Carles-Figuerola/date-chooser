@@ -72,6 +72,10 @@
       </div>
 
       <button type="button" class="btn-secondary" id="add-slot-btn">Add another slot</button>
+      <button type="button" class="btn-secondary" id="export-slots-btn">Export slots</button>
+      <button type="button" class="btn-secondary" id="import-slots-btn">Import slots</button>
+      <input type="file" id="import-slots-file" accept=".txt,text/plain" hidden>
+      <p class="body hint" id="import-slots-message" hidden></p>
       <p class="label" id="slot-counter">{{if eq (len .Slots) 1}}1 slot added{{else}}{{len .Slots}} slots added{{end}}</p>
       <p class="body hint" id="slot-hint" hidden>50+ slots can be hard for participants to scan — consider trimming the list.</p>
     </div>
