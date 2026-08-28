@@ -50,6 +50,7 @@
 
   var slotsList = document.getElementById("slots-list");
   var addBtn = document.getElementById("add-slot-btn");
+  var exportBtn = document.getElementById("export-slots-btn");
   var submitBtn = document.getElementById("submit-btn");
   var aggregateWarning = document.getElementById("slot-removal-aggregate-warning");
   var aggregateWarningText = aggregateWarning && aggregateWarning.querySelector("[data-aggregate-warning-text]");
@@ -74,6 +75,14 @@
 
   function isMarked(row) {
     return row.classList.contains("slot-row-marked");
+  }
+
+  function rowValues(row) {
+    var get = function (name) {
+      var input = row.querySelector('[name="' + name + '"]');
+      return input ? input.value : "";
+    };
+    return { date: get("slot_date"), start: get("slot_start_time"), end: get("slot_end_time") };
   }
 
   // updateSaveGate recomputes the aggregate removal warning, the required
@@ -273,6 +282,31 @@
 
   if (confirmCheckbox) {
     confirmCheckbox.addEventListener("change", updateSaveGate);
+  }
+
+  // Export dumps every row that isn't marked for removal (i.e. whatever
+  // would actually be saved) as plain text — mirrors create.js's Export
+  // button. No Import here: edit-page Import was explicitly descoped
+  // (import stays create-page only).
+  if (exportBtn) {
+    exportBtn.addEventListener("click", function () {
+      var mode = currentMode();
+      var slots = rows()
+        .filter(function (row) {
+          return !isMarked(row);
+        })
+        .map(rowValues);
+      var text = window.DateChooserSlotFields.slotsToText(mode, slots);
+      var blob = new Blob([text], { type: "text/plain" });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = "slots.txt";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
   }
 
   // Submit guard: disable the button and swap its label so a second click

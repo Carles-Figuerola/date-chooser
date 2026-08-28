@@ -534,6 +534,22 @@ textarea:focus {
    declared in the :root block above; no new hex values, no new font size or
    weight. */
 
+.results-disclosure {
+  max-width: 960px;
+  margin: var(--space-2xl) auto 0;
+  padding: 0 var(--space-lg);
+}
+
+.results-disclosure summary {
+  cursor: pointer;
+  color: var(--color-accent);
+}
+
+.results-disclosure .results-section {
+  margin: var(--space-md) 0 0;
+  padding: 0;
+}
+
 .results-section {
   max-width: 960px;
   margin: var(--space-2xl) auto 0;

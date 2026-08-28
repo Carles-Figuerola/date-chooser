@@ -730,6 +730,54 @@ func TestVote_MissingSlotAnswer_RejectedNoWrite(t *testing.T) {
 	}
 }
 
+// TestVote_ValidationError_StillShowsExistingResults proves that rejecting
+// a submission (e.g. a missing slot answer) still populates the results
+// section from whatever responses already exist for the poll, mirroring
+// the GET path's own render. Before this fix, the re-render's Results view
+// was left at its zero value, so the results table went blank on any
+// rejected submission even when the poll already had other votes.
+func TestVote_ValidationError_StillShowsExistingResults(t *testing.T) {
+	ts, st := newTestServer(t)
+	poll, slots := createVotePollWithSlots(t, st, "Existing Results Poll", "ptok-existing-results", "atok-existing-results", 2)
+
+	aliceForm := url.Values{}
+	aliceForm.Set("display_name", "Alice")
+	aliceForm.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	aliceForm.Set(fmt.Sprintf("answer_%d", slots[1].ID), "no")
+	if resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", aliceForm); err != nil {
+		t.Fatalf("POST responses (Alice) error: %v", err)
+	} else {
+		resp.Body.Close()
+	}
+
+	bobForm := url.Values{}
+	bobForm.Set("display_name", "Bob")
+	bobForm.Set(fmt.Sprintf("answer_%d", slots[0].ID), "yes")
+	// slots[1] intentionally left unanswered, to trigger the rejection.
+
+	resp, err := noRedirectClient().PostForm(ts.URL+"/poll/"+poll.ParticipantToken+"/responses", bobForm)
+	if err != nil {
+		t.Fatalf("POST responses (Bob) error: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200 re-render, got %d; body: %s", resp.StatusCode, body)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+	if !strings.Contains(bodyStr, "Alice") {
+		t.Fatalf("expected Alice's existing response to still appear in the results section, got: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, "results-badge-yes") || !strings.Contains(bodyStr, "results-badge-no") {
+		t.Fatalf("expected Alice's yes/no badges to still render in the results table, got: %s", bodyStr)
+	}
+}
+
 func TestVote_NameTooLong_RejectedNoWrite(t *testing.T) {
 	ts, st := newTestServer(t)
 	poll, slots := createVotePollWithSlots(t, st, "Name Too Long Poll", "ptok-name-too-long", "atok-name-too-long", 1)
